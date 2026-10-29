@@ -8,7 +8,7 @@ const rows = readFileSync(join(root, "tasks/STATUS.md"), "utf8")
   .split("\n")
   .map((l) => l.split("|").map((c) => c.trim()))
   .filter((c) => /^M\d-\d+[a-z]?$/.test(c[1] ?? ""))
-  .map((c) => ({ id: c[1], task: c[2], status: c[3], pr: c[4] }));
+  .map((c) => ({ id: c[1], task: c[2], status: c[3], issue: c[4], pr: c[5] }));
 const counts = {};
 for (const r of rows) counts[r.status] = (counts[r.status] ?? 0) + 1;
 const done = counts.done ?? 0;
