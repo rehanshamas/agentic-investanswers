@@ -1,0 +1,4 @@
+packages:
+  - "apps/*"
+  - "contexts/*"
+  - "shared-kernel"

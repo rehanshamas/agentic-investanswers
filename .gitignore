@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+.nx/
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+data/
+*.log
+.DS_Store
