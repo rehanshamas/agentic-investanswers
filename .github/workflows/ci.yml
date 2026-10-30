@@ -1,0 +1,50 @@
+name: CI
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  check:
+    name: CI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Lint, test, typecheck (affected)
+        run: |
+          BASE=${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD~1' }}
+          pnpm nx affected -t lint test typecheck --base=$BASE --head=HEAD --output-style=static
+        env:
+          NX_DAEMON: "false"
+
+  fixtures-guard:
+    name: Fixtures guard
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fail if fixtures/ changed without the fixtures-approved label
+        env:
+          APPROVED: ${{ contains(github.event.pull_request.labels.*.name, 'fixtures-approved') }}
+        run: |
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- fixtures/ | grep -v '\.gitkeep$' || true)
+          if [ -n "$CHANGED" ] && [ "$APPROVED" != "true" ]; then
+            echo "These fixture files changed:"; echo "$CHANGED"
+            echo "Parity fixtures are the spec. Sham must review them and add the 'fixtures-approved' label."
+            exit 1
+          fi
