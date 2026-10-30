@@ -11,7 +11,9 @@
 1. **Tests before features.** Each milestone starts by building its checker: bar parity in Week 1, freshness in Week 2, indicator parity in Week 3. Feature tasks then mean "make the checker pass".
 2. **One task = one branch = one PR.** Claude Code writes the code and opens the PR. You review and merge. `main` is protected.
 3. **Scope fence.** New requests from the client go into `docs/phase1-list.md` the same day. Only a swap of similar size gets into the MVP.
-4. **Friday = demo day.** Each Friday, run that week's demo script on staging (or locally in Week 1) and send the client a 5-line update: what was signed off, what's next, and what's at risk.
+4. **Merged branches are deleted** (GitHub setting "Automatically delete head branches"); undo a change with the PR's Revert button. Never delete an unmerged branch.
+5. **Milestone tags.** When a Friday gate passes, tag `main` (`m1-signoff`, `m2-signoff`, `m3-signoff`, `mvp-review`) as a known-good point to roll back to.
+6. **Friday = demo day.** Each Friday, run that week's demo script on staging (or locally in Week 1) and send the client a 5-line update: what was signed off, what's next, and what's at risk.
 
 ## 2. Simplify the architecture for the MVP
 
