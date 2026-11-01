@@ -37,4 +37,17 @@ Every rule here has a matching **export setting** in TradingView: the exports in
 ## Making the exports (OI-04)
 1. Open each symbol above in TradingView with the settings above (regular hours, dividends off).
 2. For each timeframe, scroll back until the chart has loaded as much history as possible, then use *Export chart data* (needs a paid TradingView plan), with time format = UNIX timestamp.
-3. Name files `<SYMBOL>_<TIMEFRAME>.csv` (for example `BTCUSD_1D.csv`, `NVDA_1m.csv`) and put them in `fixtures/parity/tradingview/`. Commit them in a PR and add the `fixtures-approved` label.
+3. Name files `<symbol>_<token>.csv` — **all lower case**, using the file token from the table below (for example `btcusd_1d.csv`, `nvda_1m.csv`, `nvda_1mo.csv`). Put them in `fixtures/parity/tradingview/`. Commit them in a PR and add the `fixtures-approved` label.
+4. There are 4 symbols × 8 timeframes = **32 files**. The M1-02 loader fails if any is missing.
+
+### File name tokens
+Timeframe names in code stay as the glossary defines them (`1m`, `5m`, `15m`, `1h`, `4h`, `1D`, `1W`, `1M`). File names use these tokens instead:
+
+| Timeframe | File token | Timeframe | File token |
+|---|---|---|---|
+| 1m | `1m` | 4h | `4h` |
+| 5m | `5m` | 1D | `1d` |
+| 15m | `15m` | 1W | `1w` |
+| 1h | `1h` | 1M | `1mo` |
+
+**Why lower case, and why `1mo` for monthly.** macOS and Windows file systems are case-insensitive by default, so `NVDA_1m.csv` and `NVDA_1M.csv` are *the same file*: exporting one after the other silently leaves a single file, and the export set looks complete while the 1-minute bars are gone. Lower-case-only names cannot collide under case folding, and `1mo` keeps monthly distinct from 1-minute without relying on case. The loader maps tokens back to the canonical timeframe names.
