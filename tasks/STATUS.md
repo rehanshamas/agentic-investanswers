@@ -7,7 +7,7 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M0-01 | Monorepo skeleton | done | #1 | #47 |
 | M0-02 | CI on PRs | done | #2 | #47 |
 | M0-03 | docs/bar-rules.md | todo | #3 |  |
-| M0-04 | shared-kernel | todo | #5 |  |
+| M0-04 | shared-kernel | in review | #5 |  |
 | M0-05 | PR template, task cards and STATUS | done | #4 | #47 |
 | M0-06 | Claude Code automation | done | #6 | #47 |
 | M1-01 | Raw store (write-once Parquet per provider/instrument/day) and cooked store (per timeframe | todo | #7 |  |
