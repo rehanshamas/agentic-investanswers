@@ -27,12 +27,19 @@ Every rule here has a matching **export setting** in TradingView: the exports in
 
 ## All markets
 - **Timeframes:** 1m, 5m, 15m, 1h, 4h, 1D, 1W, 1M. Intraday bars are aligned to the session start for stocks (09:30, 10:30, ... for 1h; the last bar of the day is shorter) and to 00:00 UTC for crypto.
+- **Stock 4h bars (the session doesn't divide evenly):** a 6.5-hour session gives one full 4h bar and a short one. Bars start at the session open and **reset each session**: 09:30–13:30 and 13:30–16:00 New York, two bars per trading day. A session's last bar is short; **a bar never spans two sessions.** Crypto 4h is unaffected: 00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC. *(Confirm against `nvda_4h.csv` when the exports land — expect two rows per trading day, at 09:30 and 13:30 New York.)*
 - **Week:** crypto weeks start Monday 00:00 UTC. Stock weeks start with the first session of the week (normally Monday; Tuesday after a Monday holiday) and the bar is stamped with that session's date.
 - **Month:** calendar month; in UTC for crypto and in New York time for stocks. Stock month bars start with the first session of the month.
 - **Missing minute:** a minute with no trades has **no bar** (TradingView skips it; we never invent flat bars). A gap is a minute for which the provider's history has a bar but our raw store doesn't. Gap repair re-fetches those from the provider.
 
 ## Timestamps
 - Every bar is stamped with its **open time in UTC**. TradingView export setting: time format = UNIX timestamp, so exports carry UTC epoch seconds.
+
+## Comparing against the exports (parity)
+- **Parity is exact; there is no tolerance.** `docs/glossary.md` defines parity as "our output equals the TradingView export, bar for bar", and that is meant literally. There is no margin of error to widen, so there is nothing for a failing test to be made to pass against (CLAUDE.md, "Tests are the spec").
+- **Compare numerically at the precision the export carries**, not as text: `191.2` and `191.20` are the same price, and a CSV float that parses to `191.19999999999999` is not a difference.
+- **Prices (O, H, L, C) are copied, never computed.** An hourly open is some 1-minute bar's open; an hourly high is the highest of its 1-minute highs. So they match exactly, and any difference is a real bug.
+- **Volume is summed, so sum it in whole smallest units** — satoshis and wei for crypto, shares for stocks — and convert for display only. Adding decimal floats drifts (`0.1 + 0.2` is `0.30000000000000004`), and over 1,440 minutes that drift would fail an exact check for a difference far too small to ever appear on a chart. Integer sums are exact, which is what lets parity stay exact.
 
 ## Making the exports (OI-04)
 1. Open each symbol above in TradingView with the settings above (regular hours, dividends off).
