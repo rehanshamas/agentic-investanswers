@@ -18,7 +18,7 @@ To start a task, ask Claude: "Start task M1-06". It copies the template into `ta
 |---|---|---|---|---|
 | M1-01 | Raw store (write-once Parquet per provider/instrument/day) and cooked store (per timeframe), behind `BarStorePort`, with S3/MinIO adapters | A | M0-04 | Round-trip test; writing a raw file twice is rejected |
 | M1-02 | Import TradingView exports into `fixtures/parity/` (normalised CSV), with a loader | A | M0-04 | Loader test; row counts per file printed |
-| M1-03 | **Bar parity harness** `pnpm parity`: compares cooked bars to fixtures on OHLCV, reports the first differing bar and a summary table; adds a required CI parity job | A | M1-01, M1-02 | Runs; fails with a readable report while nothing is built |
+| M1-03 | **Bar parity harness** `pnpm parity`: compares cooked bars to fixtures on OHLCV, reports the first differing bar and a summary table. Runs against committed **synthetic samples** in CI and against the real exports locally; the required CI parity job waits for M1-13 | A | M1-01, M1-02 | Runs; fails with a readable report while nothing is built |
 | M1-04 | CoinAPI history backfill for BTC/ETH 1m into the raw store; idempotent, resumable | B | M1-01 | 2+ years stored locally; re-run writes nothing new |
 | M1-05 | CoinAPI live stream: forming bar in memory, closed 1m to raw store, reconnect with backoff, gap marked on disconnect | B | M1-01 | Replay of a recorded stream gives the same bars as the fixture; a reconnect test |
 | M1-06 | Cook intraday rollups 1m → 5m/15m/1h/4h, incrementally (one new 1m updates only the affected bars) | C | M1-01 | `pnpm parity` green for BTC/ETH intraday |
@@ -28,6 +28,7 @@ To start a task, ask Claude: "Start task M1-06". It copies the template into `ta
 | M1-10 | Rebuild check: re-cook every timeframe from raw and diff against stored cooked bars | A | M1-06 | `pnpm rebuild-check` reports 0 differences |
 | M1-11 | Latency probe: minute close → raw stored → cooked, per symbol | A | M1-05 | p50/p95 printed; logged as a metric |
 | M1-12 | Extend the market calendar to 1999–2027: NYSE holidays, early closes **and unscheduled closures** (9/11, Hurricane Sandy, funeral closures), replacing M0-04's hard 2020–2026 error | C | M0-04 | `isTradingDay` answers for 1999-01-22 and 2027-12-31; 2001-09-11 to 09-14 and 2012-10-29 to 10-30 are not trading days; the early-close list covers the pre-2004 era, when half days were more common |
+| M1-13 | Commit the parity fixtures and turn on the required CI parity job, once the repo is private and on GitHub Pro: move the TradingView exports out of `.gitignore`, commit with the `fixtures-approved` label, add the parity job to `ci.yml` | A | M1-03, repo private | `pnpm parity` runs in CI against the real exports; a deliberately wrong bar fails the PR |
 
 ## M2: Chart, sign-in and access (Weeks 2 to 3; Week 3 also carries M4-01)
 | ID | Task | Lane | → | Done when |

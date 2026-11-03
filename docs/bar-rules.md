@@ -44,9 +44,41 @@ Every rule here has a matching **export setting** in TradingView: the exports in
 
 ## Making the exports (OI-04)
 1. Open each symbol above in TradingView with the settings above (regular hours, dividends off).
-2. For each timeframe, scroll back until the chart has loaded as much history as possible, then use *Export chart data* (needs a paid TradingView plan), with time format = UNIX timestamp.
-3. Name files `<symbol>_<token>.csv` — **all lower case**, using the file token from the table below (for example `btcusd_1d.csv`, `nvda_1m.csv`, `nvda_1mo.csv`). Put them in `fixtures/parity/tradingview/`. Commit them in a PR and add the `fixtures-approved` label.
-4. There are 4 symbols × 8 timeframes = **32 files**. The M1-02 loader fails if any is missing.
+2. For each timeframe, scroll back as far as the chart will load, then use *Export chart data* (needs a paid plan; chart-data export starts at **Plus** — Essential is ambiguous in TradingView's own docs, so Plus is the safe buy), with time format = UNIX timestamp.
+3. Name files `<symbol>_<token>.csv` — **all lower case**, using the file token from the table below (for example `btcusd_1d.csv`, `nvda_1m.csv`, `nvda_1mo.csv`).
+4. **Put them in `fixtures/parity/tradingview/` and do not commit them** — that directory is gitignored while the repo is public. See "Where the exports live" below.
+5. There are 4 symbols × 8 timeframes = **32 files**. The M1-02 loader reports which are missing.
+
+### How many bars to expect — 10,000 is the ceiling, not a failed export
+TradingView caps **intraday** history per plan and [says it cannot be extended](https://www.tradingview.com/support/solutions/43000480679-historical-intraday-data-bars-and-limits-explained/): Basic 5,000 · Essential and Plus **10,000** · Premium 20,000 · Expert 25,000 · Ultimate 40,000. So an intraday export stops at the limit however far you scroll. At 10,000 bars:
+
+| Timeframe | BTC/ETH (24/7) | NVDA/TSLA (390 min/day) |
+|---|---|---|
+| 1m | ~7 days | ~26 trading days |
+| 5m | ~35 days | ~6 months |
+| 15m | ~104 days | ~1.5 years |
+| 1h | ~1.1 years | ~5.7 years |
+| 4h | ~4.5 years | ~20 years |
+
+**1D, 1W and 1M are not intraday and are not capped this way**, so daily history should reach back to each stock's listing (NVDA 1999, TSLA 2010). That is what makes M1-12 — the calendar back to 1999 — a prerequisite for stock D/W/M parity rather than a later tidy-up.
+
+This is plenty for parity: proving a rollup is correct needs every boundary crossed many times, not years of it. What matters more than depth is that the short 1m windows **land on the days that break things**. If the default scroll-back does not include them, re-export with the chart positioned so it does:
+
+- a DST changeover: 9 to 11 March 2024 and 1 to 4 November 2024 (stocks)
+- an early close: 29 November 2024, the day after Thanksgiving (stocks)
+- a full holiday: 25 December 2024 (stocks — the export should have no bars at all that day)
+- a split: 10 June 2024 for NVDA, 25 August 2022 for TSLA (daily is enough)
+- a month and a year boundary, for both crypto and stocks
+
+### Where the exports live
+**Not in git, while the repo is public.** NVDA and TSLA bars are Nasdaq-licensed and TradingView's terms restrict redistribution, so committing them to a public repository is a licensing problem rather than an untidiness. `.gitignore` therefore ignores everything in `fixtures/parity/tradingview/` except `.gitkeep`.
+
+Consequences, all deliberate:
+- `pnpm parity` runs **locally only**. The CI parity job that M1-03 was to add cannot compare against files CI does not have.
+- The loader and the parity harness are still tested in CI, against **small synthetic sample files** committed in the repo. Synthetic bars are not licensed data; they prove the code works, not that our bars match TradingView.
+- Parity against the real exports is therefore a **by-hand step before each milestone sign-off**, run by whoever has the fixtures, until the repo is private.
+
+**M1-13** reverses all of this once the repo is private and on GitHub Pro: commit the exports with the `fixtures-approved` label, and turn on the required CI parity job.
 
 ### File name tokens
 Timeframe names in code stay as the glossary defines them (`1m`, `5m`, `15m`, `1h`, `4h`, `1D`, `1W`, `1M`). File names use these tokens instead:
