@@ -13,6 +13,16 @@ jobs:
   check:
     name: CI
     runs-on: ubuntu-latest
+    services:
+      # S3 stand-in, so the storage integration tests run here instead of skipping.
+      minio:
+        image: bitnamilegacy/minio:2025.7.23-debian-12-r5
+        env:
+          MINIO_ROOT_USER: minio
+          MINIO_ROOT_PASSWORD: minio12345
+        ports: ["9000:9000"]
+    env:
+      AIA_S3_ENDPOINT: http://127.0.0.1:9000
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,6 +33,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Wait for MinIO
+        run: for i in $(seq 1 30); do curl -sf http://127.0.0.1:9000/minio/health/live && exit 0; sleep 2; done; exit 1
       - name: Lint, test, typecheck (affected)
         run: |
           BASE=${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD~1' }}

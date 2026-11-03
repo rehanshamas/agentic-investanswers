@@ -38,6 +38,7 @@ async function minioReachable(): Promise<boolean> {
 
 const available = await minioReachable();
 if (!available) {
+  if (process.env['CI']) throw new Error('MinIO not reachable at ' + config.endpoint + ' in CI; the cooked store tests must run there.');
   console.warn('MinIO not reachable at ' + config.endpoint + '; skipping cooked store tests. Run: docker compose up -d');
 }
 
