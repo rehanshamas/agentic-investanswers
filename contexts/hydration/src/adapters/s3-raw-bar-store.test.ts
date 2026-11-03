@@ -1,0 +1,146 @@
+// Integration tests against the local MinIO from `docker compose up -d`.
+//
+// Skipped with a clear message when MinIO is unreachable, so `pnpm check`
+// stays green on a machine without Docker. NOTE: CI has no MinIO service yet,
+// so these currently run only locally — see tasks/M1-01.md.
+
+import { CreateBucketCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
+import { barTimeFromUtcParts, parseScaled, price, volume } from '@aia/shared-kernel';
+import type { Bar, BarTime } from '@aia/shared-kernel';
+import { beforeAll, describe, expect, it } from 'vitest';
+
+import { RawDayAlreadyStoredError } from '../application/raw-bar-store-port.js';
+import type { RawDayRef } from '../application/raw-bar-store-port.js';
+import { RawDayError } from '../domain/raw-day.js';
+import { S3RawBarStore, rawDayKey } from './s3-raw-bar-store.js';
+import type { S3StoreConfig } from './s3-objects.js';
+import { createS3Client } from './s3-objects.js';
+
+const config: S3StoreConfig = {
+  bucket: 'aia-raw',
+  endpoint: process.env['AIA_S3_ENDPOINT'] ?? 'http://127.0.0.1:9000',
+  region: 'us-east-1',
+  credentials: { accessKeyId: 'minio', secretAccessKey: 'minio12345' },
+};
+
+async function minioReachable(): Promise<boolean> {
+  // Reuse the adapter's own factory, so the test cannot drift from how the
+  // store really builds its client.
+  const client = createS3Client(config);
+  try {
+    try {
+      await client.send(new HeadBucketCommand({ Bucket: config.bucket }));
+    } catch {
+      await client.send(new CreateBucketCommand({ Bucket: config.bucket }));
+    }
+    return true;
+  } catch {
+    return false;
+  } finally {
+    client.destroy();
+  }
+}
+
+const available = await minioReachable();
+if (!available) {
+  console.warn('MinIO not reachable at ' + config.endpoint + '; skipping raw store tests. Run: docker compose up -d');
+}
+
+/** Raw is write-once, so every run needs its own keys or the second run fails. */
+const runId = `test-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+function ref(date = '2024-03-15'): RawDayRef {
+  return { provider: runId, symbol: 'BTCUSD', date };
+}
+
+function bar(time: BarTime, close: string): Bar {
+  const value = price(parseScaled(close, 2));
+  return {
+    time,
+    open: value,
+    high: value,
+    low: value,
+    close: value,
+    volume: volume(parseScaled('1.23456789', 8)),
+  };
+}
+
+const start = barTimeFromUtcParts(2024, 3, 15);
+const day: Bar[] = [
+  bar(start, '68123.45'),
+  bar((start + 60) as BarTime, '68150.99'),
+  bar((start + 120) as BarTime, '68290.10'),
+];
+
+describe.skipIf(!available)('S3RawBarStore against MinIO', () => {
+  let store: S3RawBarStore;
+
+  beforeAll(() => {
+    store = new S3RawBarStore(config);
+  });
+
+  it('round-trips a day exactly', async () => {
+    const key = ref();
+    await store.putDay(key, day);
+    expect(await store.getDay(key)).toEqual(day);
+  });
+
+  it('rejects writing the same raw day twice', async () => {
+    // The done-check for this task, and CLAUDE.md rule 3: raw is write-once.
+    const key = ref('2024-03-16');
+    await store.putDay(key, [bar(barTimeFromUtcParts(2024, 3, 16), '100.00')]);
+    await expect(
+      store.putDay(key, [bar(barTimeFromUtcParts(2024, 3, 16), '999.99')]),
+    ).rejects.toThrow(RawDayAlreadyStoredError);
+  });
+
+  it('leaves the first write intact after a rejected second write', async () => {
+    const key = ref('2024-03-17');
+    const first = [bar(barTimeFromUtcParts(2024, 3, 17), '111.11')];
+    await store.putDay(key, first);
+    await store
+      .putDay(key, [bar(barTimeFromUtcParts(2024, 3, 17), '222.22')])
+      .catch(() => undefined);
+    expect(await store.getDay(key)).toEqual(first);
+  });
+
+  it('reports whether a day exists without reading it', async () => {
+    const key = ref('2024-03-18');
+    expect(await store.hasDay(key)).toBe(false);
+    await store.putDay(key, [bar(barTimeFromUtcParts(2024, 3, 18), '100.00')]);
+    expect(await store.hasDay(key)).toBe(true);
+  });
+
+  it('returns undefined for a day that was never written', async () => {
+    expect(await store.getDay(ref('2024-03-19'))).toBeUndefined();
+  });
+
+  it('stores an empty day, so a known-empty day is distinguishable from a gap', async () => {
+    const key = ref('2024-03-20');
+    await store.putDay(key, []);
+    expect(await store.hasDay(key)).toBe(true);
+    expect(await store.getDay(key)).toEqual([]);
+  });
+
+  it('validates before writing, so a bad batch leaves nothing behind', async () => {
+    const key = ref('2024-03-21');
+    const wrongDay = [bar(barTimeFromUtcParts(2024, 3, 22), '100.00')];
+    await expect(store.putDay(key, wrongDay)).rejects.toThrow(RawDayError);
+    expect(await store.hasDay(key)).toBe(false);
+  });
+});
+
+describe('rawDayKey', () => {
+  it('splits by provider, symbol, year and month', () => {
+    expect(rawDayKey({ provider: 'coinapi', symbol: 'BTCUSD', date: '2024-03-05' })).toBe(
+      'raw/coinapi/BTCUSD/2024/03/05.parquet',
+    );
+  });
+
+  it('zero-pads month and day, so keys sort lexically', () => {
+    const keys = ['2024-01-02', '2024-01-10', '2024-02-01', '2024-11-30'].map((date) =>
+      rawDayKey({ provider: 'p', symbol: 'S', date }),
+    );
+    expect([...keys].sort()).toEqual(keys);
+  });
+});
