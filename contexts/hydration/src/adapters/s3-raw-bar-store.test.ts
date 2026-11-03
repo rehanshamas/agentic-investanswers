@@ -1,8 +1,9 @@
 // Integration tests against the local MinIO from `docker compose up -d`.
 //
 // Skipped with a clear message when MinIO is unreachable, so `pnpm check`
-// stays green on a machine without Docker. NOTE: CI has no MinIO service yet,
-// so these currently run only locally — see tasks/M1-01.md.
+// stays green on a machine without Docker. In CI (which runs a MinIO service)
+// an unreachable MinIO fails the run instead, so these tests can never be
+// silently skipped there.
 
 import { CreateBucketCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
 import { barTimeFromUtcParts, parseScaled, price, volume } from '@aia/shared-kernel';
@@ -43,6 +44,7 @@ async function minioReachable(): Promise<boolean> {
 
 const available = await minioReachable();
 if (!available) {
+  if (process.env['CI']) throw new Error('MinIO not reachable at ' + config.endpoint + ' in CI; the raw store tests must run there.');
   console.warn('MinIO not reachable at ' + config.endpoint + '; skipping raw store tests. Run: docker compose up -d');
 }
 
