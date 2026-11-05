@@ -22,6 +22,7 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M1-10 | Rebuild check | todo | #16 |  |
 | M1-11 | Latency probe: minute close → raw stored → cooked, per symbol | todo | #17 |  |
 | M1-12 | Extend the market calendar to 1999-2027 | todo | #53 |  |
+| M1-13 | Commit parity fixtures, turn on the CI parity job | blocked | #58 |  |
 | M2-01 | CDK staging stack | todo | #18 |  |
 | M2-02 | Cache layer | todo | #19 |  |
 | M2-03 | History API | todo | #20 |  |

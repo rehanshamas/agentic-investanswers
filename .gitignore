@@ -9,3 +9,13 @@ coverage/
 data/
 *.log
 .DS_Store
+
+# TradingView parity exports stay OUT of the repo while it is public.
+# NVDA and TSLA data is Nasdaq-licensed and TradingView's terms restrict
+# redistribution, so committing it to a public repo is a licensing problem,
+# not just an oversight. Put the exports here locally; they are read from disk
+# and never committed. Reversed when the repo goes private (see OI-04, M1-13).
+# Synthetic sample files are NOT licensed data and may be committed, which is
+# how the loader and parity harness get something to test against in CI.
+fixtures/parity/tradingview/*
+!fixtures/parity/tradingview/.gitkeep
