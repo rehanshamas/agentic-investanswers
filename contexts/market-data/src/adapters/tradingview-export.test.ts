@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,6 +20,23 @@ import {
 
 /** Where the real exports live, relative to the repo root. */
 const REAL_DIR = join(__dirname, '..', '..', '..', '..', DEFAULT_FIXTURE_DIR);
+
+/**
+ * The real exports are not committed while the repo is public (OI-04, #59), so
+ * CI has no copy of them and these tests can only run on a machine where they
+ * have been placed by hand. They are skipped rather than failed, with a reason
+ * printed so a skip is never silent.
+ *
+ * No code change is needed when M1-13 commits the files: CI will have them,
+ * the guard passes, and these start running there automatically.
+ */
+const REAL_FIXTURES_PRESENT = existsSync(`${REAL_DIR}/btcusd_1m.csv`);
+if (!REAL_FIXTURES_PRESENT) {
+  console.warn(
+    `\n  SKIPPING the real-export tests: no fixtures in ${REAL_DIR}.` +
+      `\n  Expected while the repo is public (OI-04, M1-13). Place the exports there to run them.\n`,
+  );
+}
 
 /** A throwaway directory for the hand-written edge-case files. */
 let scratch: string;
@@ -150,7 +168,7 @@ describe('parsing', () => {
   });
 });
 
-describe('the real exports', () => {
+describe.skipIf(!REAL_FIXTURES_PRESENT)('the real exports', () => {
   it('lists 16 crypto files', async () => {
     const files = await listFixtureFiles(REAL_DIR);
     expect(files).toHaveLength(16);
