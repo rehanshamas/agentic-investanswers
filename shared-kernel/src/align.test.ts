@@ -5,8 +5,10 @@ import type { BarTime } from './bar-time.js';
 import { addMinutes, barTimeFromUtcParts } from './bar-time.js';
 import { nyseCalendar } from './calendar.js';
 import type { Instrument } from './instrument.js';
+
 import { sessionOn } from './session.js';
 import type { Timeframe } from './timeframe.js';
+import { zonedParts } from './time-zone.js';
 
 const BTC: Instrument = {
   symbol: 'BTCUSD',
@@ -206,28 +208,71 @@ describe('stock alignment across daylight saving', () => {
 });
 
 describe('stock daily, weekly and monthly stamping', () => {
-  it('stamps a daily bar with the session date', () => {
+  // These expectations were corrected against the real TradingView exports
+  // (OI-04). The earlier ones said midnight UTC of the session date, which was
+  // a documented guess; `nvda_1d.csv` has 6,992 bars whose New York time of day
+  // is always 09:30, so the stamp is the session open.
+
+  /** Every stamp must read 09:30 in New York, whatever the UTC offset is. */
+  function expectNineThirtyNewYork(stamp: BarTime | undefined): void {
+    expect(stamp).toBeDefined();
+    if (stamp === undefined) return;
+    const parts = zonedParts(stamp, 'America/New_York');
+    expect(`${parts.hour}:${parts.minute}`).toBe('9:30');
+  }
+
+  it('stamps a daily bar with its session open, not midnight', () => {
     const midSession = barTimeFromUtcParts(2024, 1, 16, 17, 0, 0);
-    expect(alignToTimeframe(NVDA, '1D', midSession, nyse)).toBe(barTimeFromUtcParts(2024, 1, 16));
+    const stamp = alignToTimeframe(NVDA, '1D', midSession, nyse);
+    expect(stamp).toBe(sessionOn(NVDA, nyse, '2024-01-16')?.open);
+    expect(stamp).toBe(barTimeFromUtcParts(2024, 1, 16, 14, 30, 0));
+    expectNineThirtyNewYork(stamp);
+  });
+
+  it('reads 09:30 New York in both EST and EDT, which is 14:30 and 13:30 UTC', () => {
+    // The invariant the exports actually show: one New York time, two UTC times.
+    const winter = alignToTimeframe(NVDA, '1D', barTimeFromUtcParts(2024, 1, 16, 17, 0, 0), nyse);
+    const summer = alignToTimeframe(NVDA, '1D', barTimeFromUtcParts(2024, 7, 16, 17, 0, 0), nyse);
+    expect(winter).toBe(barTimeFromUtcParts(2024, 1, 16, 14, 30, 0));
+    expect(summer).toBe(barTimeFromUtcParts(2024, 7, 16, 13, 30, 0));
+    expectNineThirtyNewYork(winter);
+    expectNineThirtyNewYork(summer);
   });
 
   it('starts the week at the first session, so Tuesday after a Monday holiday', () => {
     // Monday 15 January 2024 is Martin Luther King Jr. Day.
     const wednesday = barTimeFromUtcParts(2024, 1, 17, 17, 0, 0);
-    expect(alignToTimeframe(NVDA, '1W', wednesday, nyse)).toBe(barTimeFromUtcParts(2024, 1, 16));
+    const stamp = alignToTimeframe(NVDA, '1W', wednesday, nyse);
+    expect(stamp).toBe(sessionOn(NVDA, nyse, '2024-01-16')?.open);
+    expectNineThirtyNewYork(stamp);
   });
 
   it('starts the week on Monday when Monday is a trading day', () => {
     const wednesday = barTimeFromUtcParts(2024, 1, 24, 17, 0, 0);
-    expect(alignToTimeframe(NVDA, '1W', wednesday, nyse)).toBe(barTimeFromUtcParts(2024, 1, 22));
+    const stamp = alignToTimeframe(NVDA, '1W', wednesday, nyse);
+    expect(stamp).toBe(sessionOn(NVDA, nyse, '2024-01-22')?.open);
+    expectNineThirtyNewYork(stamp);
   });
 
   it('starts the month at the first session, so the 2nd when the 1st is a holiday', () => {
     // 1 January 2024 is a Monday and a holiday, so January opens on the 2nd.
     const midJanuary = barTimeFromUtcParts(2024, 1, 16, 17, 0, 0);
-    expect(alignToTimeframe(NVDA, '1M', midJanuary, nyse)).toBe(barTimeFromUtcParts(2024, 1, 2));
-    // 1 July 2024 is a Monday and a trading day.
+    expect(alignToTimeframe(NVDA, '1M', midJanuary, nyse)).toBe(
+      sessionOn(NVDA, nyse, '2024-01-02')?.open,
+    );
+    // 1 July 2024 is a Monday and a trading day, and in daylight time.
     const midJuly = barTimeFromUtcParts(2024, 7, 16, 17, 0, 0);
-    expect(alignToTimeframe(NVDA, '1M', midJuly, nyse)).toBe(barTimeFromUtcParts(2024, 7, 1));
+    const july = alignToTimeframe(NVDA, '1M', midJuly, nyse);
+    expect(july).toBe(barTimeFromUtcParts(2024, 7, 1, 13, 30, 0));
+    expectNineThirtyNewYork(july);
+  });
+
+  it('never stamps a stock calendar bar at midnight UTC', () => {
+    // The bug this replaced: a guard so it cannot come back unnoticed.
+    for (const timeframe of ['1D', '1W', '1M'] as const) {
+      const stamp = alignToTimeframe(NVDA, timeframe, barTimeFromUtcParts(2024, 1, 16, 17, 0, 0), nyse);
+      expect(stamp).toBeDefined();
+      if (stamp !== undefined) expect(stamp % 86_400).not.toBe(0);
+    }
   });
 });

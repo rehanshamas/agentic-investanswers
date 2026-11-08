@@ -11,6 +11,13 @@ Every rule here has a matching **export setting** in TradingView: the exports in
 | NVDA | `NASDAQ:NVDA` | Massive `NVDA` | On the client's launch list; 10-for-1 split in June 2024 tests split adjustment |
 | TSLA | `NASDAQ:TSLA` | Massive `TSLA` | On the client's launch list; 3-for-1 split in Aug 2022 |
 
+**Watch out: TradingView will hand you Cboe BZX (BATS) data for US stocks, whatever symbol you type.** Primary-exchange feeds are sold separately, so without a Nasdaq data subscription the `NASDAQ:NVDA` chart is fed by Cboe BZX and the export is named `BATS_NVDA`. Cboe carries 25%+ of US volume, so prices are close but **volume is not**, and volume parity would fail on every bar. Two consequences:
+
+- Check the export's filename, not the symbol you searched for.
+- **Which feed we should buy is still open**, because nobody has established what venue Massive serves for `NVDA`. If Massive returns the consolidated tape, a Nasdaq-sourced fixture will not match it either. M1-07 answers this the first time we call Massive; buy the matching TradingView feed then, not before.
+
+Venue does not affect *bucketing*, so the BATS exports are still valid for proving session, DST and alignment rules — which is what they were used for above.
+
 
 ## Crypto
 - Trades 24/7; there are no sessions, holidays or gaps by design.
@@ -27,13 +34,22 @@ Every rule here has a matching **export setting** in TradingView: the exports in
 
 ## All markets
 - **Timeframes:** 1m, 5m, 15m, 1h, 4h, 1D, 1W, 1M. Intraday bars are aligned to the session start for stocks (09:30, 10:30, ... for 1h; the last bar of the day is shorter) and to 00:00 UTC for crypto.
-- **Stock 4h bars (the session doesn't divide evenly):** a 6.5-hour session gives one full 4h bar and a short one. Bars start at the session open and **reset each session**: 09:30–13:30 and 13:30–16:00 New York, two bars per trading day. A session's last bar is short; **a bar never spans two sessions.** Crypto 4h is unaffected: 00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC. *(Confirm against `nvda_4h.csv` when the exports land — expect two rows per trading day, at 09:30 and 13:30 New York.)*
-- **Week:** crypto weeks start Monday 00:00 UTC. Stock weeks start with the first session of the week (normally Monday; Tuesday after a Monday holiday) and the bar is stamped with that session's date.
-- **Month:** calendar month; in UTC for crypto and in New York time for stocks. Stock month bars start with the first session of the month.
+- **Stock 4h bars (the session doesn't divide evenly):** a 6.5-hour session gives one full 4h bar and a short one. Bars start at the session open and **reset each session**: 09:30–13:30 and 13:30–16:00 New York, two bars per trading day. A session's last bar is short; **a bar never spans two sessions.** Crypto 4h is unaffected: 00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC. **Confirmed against the exports:** `nvda_4h.csv` and `tsla_4h.csv` have exactly two distinct New York times of day, 09:30 and 13:30, across 5,378 trading days; rolled up from 15m they contain 16 and 10 bars (240 and 150 minutes), and an early-close day collapses to a single 14-bar bucket.
+- **Week:** crypto weeks start Monday 00:00 UTC. Stock weeks start with the first session of the week (normally Monday; Tuesday after a Monday holiday). **Confirmed:** every crypto weekly bar in the exports is a Monday at 00:00 UTC, and 133 of 1,451 `nvda_1w.csv` bars fall on a Tuesday or later — for example 2000-01-18 after Martin Luther King Jr. Day and 2000-02-22 after Presidents Day.
+- **Month:** calendar month; in UTC for crypto and in New York time for stocks. Stock month bars start with the first session of the month. **Confirmed:** every crypto monthly bar is day 1 at 00:00 UTC; stock monthly bars land on only a handful of distinct days of the month, as the first trading day moves.
 - **Missing minute:** a minute with no trades has **no bar** (TradingView skips it; we never invent flat bars). A gap is a minute for which the provider's history has a bar but our raw store doesn't. Gap repair re-fetches those from the provider.
 
 ## Timestamps
 - Every bar is stamped with its **open time in UTC**. TradingView export setting: time format = UNIX timestamp, so exports carry UTC epoch seconds.
+- **Stock 1D, 1W and 1M bars are stamped with the session open, 09:30 New York** — not midnight. This rule beat the looser "stamped with that session's date" wording elsewhere in this file, and it was settled by measurement: `nvda_1d.csv` holds 6,992 bars whose New York time of day is **always 09:30**, showing as 13:30 or 14:30 UTC purely because of daylight saving.
+
+  ```
+  NVDA 1D  6992 rows  1999-01-22 -> 2026-11-06
+    UTC time-of-day: [13:30, 14:30]   NY time-of-day: [09:30]
+  ```
+
+  `shared-kernel` originally guessed midnight UTC, which was wrong by 13.5 or 14.5 hours on every stock calendar bar. Verified after fixing: our session opens reproduce **1,717 of 1,717** export stamps in 2020–2026.
+- **Discard the last bar of every export.** The newest bar is still forming when the file is saved, so two files saved seconds apart disagree on it — measured on `btcusd_5m.csv`, whose final bar was the only one of 501 that did not match the 1m file. Delayed stock feeds have the same effect for a different reason. Parity must compare up to the fixture's second-to-last bar, never to "now".
 
 ## Comparing against the exports (parity)
 - **Parity is exact; there is no tolerance.** `docs/glossary.md` defines parity as "our output equals the TradingView export, bar for bar", and that is meant literally. There is no margin of error to widen, so there is nothing for a failing test to be made to pass against (CLAUDE.md, "Tests are the spec").
