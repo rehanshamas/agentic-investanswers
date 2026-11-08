@@ -10,10 +10,10 @@ import type { MarketCalendar } from './calendar.js';
 import { firstTradingDayOfMonth, firstTradingDayOfWeek } from './calendar.js';
 import type { Instrument } from './instrument.js';
 import { hasSessions } from './instrument.js';
-import { sessionContaining } from './session.js';
+import { sessionContaining, sessionOn } from './session.js';
 import type { Timeframe } from './timeframe.js';
 import { timeframeKind, timeframeSeconds } from './timeframe.js';
-import { parseDateKey, zonedParts } from './time-zone.js';
+import { zonedParts } from './time-zone.js';
 
 export class AlignmentError extends Error {}
 
@@ -23,21 +23,35 @@ const DAY = 86_400;
 const WEEK = 604_800;
 
 /**
- * How a stock's 1D, 1W and 1M bar is stamped.
+ * How a stock's 1D, 1W and 1M bar is stamped: with its **session open**.
  *
- * docs/bar-rules.md says these are "stamped with that session's date", while
- * "Timestamps" says every bar carries its open time in UTC. For an intraday
- * bar those agree; for a daily stock bar they do not, and TradingView could
- * plausibly use midnight UTC, midnight New York, or the 09:30 session open.
+ * Settled against the real exports (OI-04), which contradicted the guess this
+ * function originally held. `nvda_1d.csv` carries 6,992 bars whose New York
+ * time of day is **always 09:30**, appearing as either 13:30 or 14:30 UTC
+ * purely because of daylight saving:
  *
- * Midnight UTC of the session date is the default, as the plainest reading of
- * "that session's date". It is deliberately the only place that decision is
- * made, so confirming it against `nvda_1d.csv` when the exports land is a
- * one-line change rather than a hunt. OI-04 settles it.
+ *     NVDA 1D  6992 rows  1999-01-22 -> 2026-11-06
+ *       UTC time-of-day: [13:30, 14:30]   NY time-of-day: [09:30]
+ *
+ * So `docs/bar-rules.md`'s "every bar is stamped with its open time in UTC"
+ * is the rule that holds, and its "stamped with that session's date" wording
+ * was the loose one. A daily stock bar's open time really is its session open.
+ *
+ * The previous implementation returned midnight UTC of the session date, which
+ * was wrong by 13.5 or 14.5 hours on every stock 1D, 1W and 1M bar.
  */
-function stampForSessionDate(date: string): BarTime {
-  const { year, month, day } = parseDateKey(date);
-  return barTimeFromUtcParts(year, month, day);
+function stampForSessionDate(
+  instrument: Instrument,
+  calendar: MarketCalendar,
+  date: string,
+): BarTime {
+  const session = sessionOn(instrument, calendar, date);
+  if (session === undefined) {
+    throw new AlignmentError(
+      `${date} has no session, so no bar can be stamped with it. This should be unreachable: callers pass a trading day.`,
+    );
+  }
+  return session.open;
 }
 
 function alignCrypto(timeframe: Timeframe, instant: BarTime): BarTime {
@@ -82,11 +96,12 @@ function alignStock(
 
   switch (timeframeKind(timeframe)) {
     case 'daily':
-      return stampForSessionDate(session.date);
+      // The containing session's own open: no lookup needed.
+      return session.open;
     case 'weekly':
-      return stampForSessionDate(firstTradingDayOfWeek(calendar, session.date));
+      return stampForSessionDate(instrument, calendar, firstTradingDayOfWeek(calendar, session.date));
     case 'monthly':
-      return stampForSessionDate(firstTradingDayOfMonth(calendar, session.date));
+      return stampForSessionDate(instrument, calendar, firstTradingDayOfMonth(calendar, session.date));
     default:
       throw new AlignmentError(`Unhandled timeframe ${timeframe}`);
   }
