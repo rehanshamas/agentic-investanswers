@@ -17,3 +17,25 @@ export {
 
 export type { S3StoreConfig } from './adapters/s3-objects.js';
 export { S3CookedBarStore, cookedKey } from './adapters/s3-cooked-bar-store.js';
+
+export type { LoadOptions, ParityFixture } from './adapters/tradingview-export.js';
+export {
+  DEFAULT_FIXTURE_DIR,
+  FixtureError,
+  fixtureFileName,
+  listFixtureFiles,
+  loadFixture,
+  loadFixtures,
+  summariseFixtures,
+} from './adapters/tradingview-export.js';
+
+export {
+  BTCUSD,
+  CRYPTO_PARITY_INSTRUMENTS,
+  ETHUSD,
+  NVDA,
+  PARITY_INSTRUMENTS,
+  STOCK_PARITY_INSTRUMENTS,
+  TSLA,
+  parityInstrument,
+} from './domain/parity-instruments.js';
