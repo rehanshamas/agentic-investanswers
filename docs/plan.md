@@ -50,7 +50,7 @@ This means about 11 tasks a week instead of 9, so you need **3 lanes (3 worktree
 | Thu | M1-09 gap detector | M1-05 crypto live stream | M1-06 intraday rollups |
 | Fri | M1-10 rebuild check, M1-11 latency probe | M1-07 stock backfill + stream | M1-08 D/W/M + stock sessions |
 
-**Friday gate (= brief's M1):** bar parity green for BTC/ETH on all timeframes, and stocks green at least intraday.
+**Friday gate (= brief's M1):** build parity green for BTC/ETH on all timeframes, and stocks green at least intraday; source fidelity reported (split by Sham on 2026-11-09, M1-14).
 **Cut line if late:** stocks drop to 1 symbol; stock D/W and the latency probe move to Monday of Week 2.
 
 ### Week 2 (9 to 13 Nov): serving, chart and sign-in

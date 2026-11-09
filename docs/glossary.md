@@ -8,6 +8,7 @@
 - **Cooked bars**: bars derived from raw 1-minute bars; always rebuildable from raw.
 - **Hydration**: loading history once, then keeping data current from live streams, and repairing gaps.
 - **Indicator**: a ported TradingView script (for example IA-ATR-Model 2.1). Never call it a "model".
-- **Parity**: our output equals the TradingView export, bar for bar.
+- **Parity** (build parity): our output equals the TradingView export, bar for bar — measured by rolling TradingView's own finer export up with our code and comparing it with its coarser export, exactly. The gate. See `docs/bar-rules.md`.
+- **Source fidelity**: how closely our provider's bars match the TradingView export, as match rates per field. Reported, never a gate, because TradingView's record misses some trades.
 - **Principal**: who is making a request, a human or an agent. Every request carries one.
 - **Plan**: the customer's subscription tier, which decides what they can see.
