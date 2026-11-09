@@ -6,8 +6,8 @@ Every rule here has a matching **export setting** in TradingView: the exports in
 ## Instruments for parity
 | Instrument | TradingView symbol (exports) | Provider symbol | Why |
 |---|---|---|---|
-| BTC | `COINBASE:BTCUSD` | CoinAPI `COINBASE_SPOT_BTC_USD` | Same venue on both sides; bars differ between exchanges |
-| ETH | `COINBASE:ETHUSD` | CoinAPI `COINBASE_SPOT_ETH_USD` | Same |
+| BTC | `COINBASE:BTCUSD` | History: Coinbase `BTC-USD`; live: CoinAPI `COINBASE_SPOT_BTC_USD` | Same venue on both sides; bars differ between exchanges |
+| ETH | `COINBASE:ETHUSD` | History: Coinbase `ETH-USD`; live: CoinAPI `COINBASE_SPOT_ETH_USD` | Same |
 | NVDA | `NASDAQ:NVDA` | Massive `NVDA` | On the client's launch list; 10-for-1 split in June 2024 tests split adjustment |
 | TSLA | `NASDAQ:TSLA` | Massive `TSLA` | On the client's launch list; 3-for-1 split in Aug 2022 |
 
