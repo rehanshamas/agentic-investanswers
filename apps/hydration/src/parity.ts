@@ -32,9 +32,12 @@ import { TIMEFRAMES, isTimeframe } from '@aia/shared-kernel';
 
 import { RawMinuteSource } from './raw-minute-source.js';
 
-/** Raw files are keyed by provider: CoinAPI for crypto, Massive for stocks. */
+/**
+ * Raw files are keyed by provider. Crypto history is backfilled from
+ * Coinbase (M1-04); stocks will come from Massive (M1-07).
+ */
 function providerOf(instrument: Instrument): string {
-  return instrument.kind === 'crypto' ? 'coinapi' : 'massive';
+  return instrument.kind === 'crypto' ? 'coinbase' : 'massive';
 }
 
 function usage(message: string): never {
