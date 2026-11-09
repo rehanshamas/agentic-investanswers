@@ -13,7 +13,7 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M1-01 | Raw store (write-once Parquet per provider/instrument/day) and cooked store (per timeframe | done | #7 | #55 |
 | M1-02 | Import TradingView exports into fixtures/parity/ (normalised CSV), with a loader | done | #8 | #63 |
 | M1-03 | Bar parity harness pnpm parity | done | #9 | #65 |
-| M1-04 | CoinAPI history backfill for BTC/ETH 1m into the raw store; idempotent, resumable | in progress | #10 |  |
+| M1-04 | CoinAPI history backfill for BTC/ETH 1m into the raw store; idempotent, resumable | in review | #10 |  |
 | M1-05 | CoinAPI live stream | todo | #11 |  |
 | M1-06 | Cook intraday rollups 1m → 5m/15m/1h/4h, incrementally (one new 1m updates only the affect | in review | #12 | #62 |
 | M1-07 | Massive (stocks) backfill and live stream for 2 symbols, same ports as crypto | todo | #13 |  |
