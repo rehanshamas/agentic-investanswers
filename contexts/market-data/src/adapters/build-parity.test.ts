@@ -32,7 +32,9 @@ class Samples implements ParityExportSourcePort {
 }
 
 function build(exports: ParityExportSourcePort, targets = TARGETS): ReturnType<RunParity['runBuild']> {
-  return new RunParity({ exports }).runBuild([BTCUSD], targets);
+  // The samples cover 12 hours, so the 14-day settle rule is off here; it is
+  // tested in domain/build-parity.test.ts.
+  return new RunParity({ exports, settleSeconds: 0 }).runBuild([BTCUSD], targets);
 }
 
 describe('build parity on the synthetic samples', () => {

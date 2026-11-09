@@ -37,11 +37,13 @@ export interface ParityWindow {
 
 /**
  * - `exact`: every export bar in the window equals ours, with nothing extra.
+ * - `excepted`: build parity only; exact apart from bars on the approved
+ *   exception list (`build-parity-exceptions.ts`). Passes, but never as exact.
  * - `differs`: at least one bar differs, is missing or is extra.
  * - `not-built`: we hold no bars in the export's range at all.
  * - `no-overlap`: we hold bars, but none inside a comparable window.
  */
-export type ParityStatus = 'exact' | 'differs' | 'not-built' | 'no-overlap';
+export type ParityStatus = 'exact' | 'excepted' | 'differs' | 'not-built' | 'no-overlap';
 
 export interface ParityComparison {
   readonly status: ParityStatus;
@@ -60,6 +62,15 @@ export interface ParityComparison {
    * reports it, since a feed missing trades shows up here first.
    */
   readonly maxVolumeDeviation: number;
+  /**
+   * Build parity: recent bars that differ, excused rather than failed, since
+   * they closed too recently for TradingView to have reconciled them.
+   */
+  readonly recentDiffers?: number;
+  /** Build parity: listed exception bars that still differ as listed, so were set aside. */
+  readonly excepted?: number;
+  /** Build parity: listed exceptions that no longer differ as listed; the list needs tidying. */
+  readonly staleExceptions?: readonly BarTime[];
 }
 
 function noFieldDiffers(): Record<BarField, number> {

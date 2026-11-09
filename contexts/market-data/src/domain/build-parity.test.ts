@@ -2,7 +2,11 @@ import type { Bar, BarTime, Instrument } from '@aia/shared-kernel';
 import { barTime, price, volume } from '@aia/shared-kernel';
 import { describe, expect, it } from 'vitest';
 
-import { BUILD_SOURCES, buildParity, buildSource } from './build-parity.js';
+import type { BuildParityException } from './build-parity-exceptions.js';
+import { BUILD_SOURCES, SETTLE_SECONDS, buildParity, buildSource } from './build-parity.js';
+
+/** These series cover an hour, so the 14-day settle rule is tested on its own below. */
+const NOW = { settleSeconds: 0 };
 
 const BTC: Instrument = {
   symbol: 'BTCUSD', kind: 'crypto', venue: 'COINBASE',
@@ -54,7 +58,7 @@ function at(i: number): BarTime {
 
 describe('buildParity', () => {
   it('is exact when our rollup of the finer export equals the coarser one', () => {
-    const result = buildParity(BTC, '5m', minutes(0, 60), expected5m(0, 60));
+    const result = buildParity(BTC, '5m', minutes(0, 60), expected5m(0, 60), NOW);
     // 12 buckets; the last holds the source's final minute and is dropped.
     expect(result).toMatchObject({ status: 'exact', matched: 11, differing: 0, missing: 0 });
     expect(result.window).toEqual({ from: at(0), until: at(50), skipped: 0 });
@@ -65,7 +69,7 @@ describe('buildParity', () => {
     const target = exported[3];
     if (target === undefined) throw new Error('unreachable');
     exported[3] = { ...target, volume: volume(target.volume + 1) };
-    const result = buildParity(BTC, '5m', minutes(0, 60), exported);
+    const result = buildParity(BTC, '5m', minutes(0, 60), exported, NOW);
     expect(result).toMatchObject({ status: 'differs', differing: 1 });
     expect(result.first).toMatchObject({ time: at(15), fields: ['volume'] });
   });
@@ -73,7 +77,7 @@ describe('buildParity', () => {
   it('does not compare a first bar the source only partly covers', () => {
     // The source starts at minute 7, inside the 5..10 bucket.
     const exported = expected5m(0, 60).map((bar, i) => (i === 1 ? { ...bar, high: price(1) } : bar));
-    const result = buildParity(BTC, '5m', minutes(7, 60), exported);
+    const result = buildParity(BTC, '5m', minutes(7, 60), exported, NOW);
     expect(result).toMatchObject({ status: 'exact', matched: 9 });
     expect(result.window?.from).toBe(at(10));
     expect(result.window?.skipped).toBe(2);
@@ -81,7 +85,7 @@ describe('buildParity', () => {
 
   it('does not compare a last bar the source may stop partway through', () => {
     // The source stops at minute 57, inside the 55..60 bucket the export has whole.
-    const result = buildParity(BTC, '5m', minutes(0, 58), expected5m(0, 60));
+    const result = buildParity(BTC, '5m', minutes(0, 58), expected5m(0, 60), NOW);
     expect(result).toMatchObject({ status: 'exact', matched: 11 });
     expect(result.window?.until).toBe(at(50));
   });
@@ -89,14 +93,113 @@ describe('buildParity', () => {
   it('stays strict inside the window: an export bar we cannot rebuild fails', () => {
     // A gap in the finer export where the coarser one has a bar.
     const source = minutes(0, 60).filter((_, i) => i < 20 || i >= 25);
-    const result = buildParity(BTC, '5m', source, expected5m(0, 60));
+    const result = buildParity(BTC, '5m', source, expected5m(0, 60), NOW);
     expect(result).toMatchObject({ status: 'differs', missing: 1 });
     expect(result.first?.time).toBe(at(20));
   });
 
   it('has nothing to compare when the source is empty or too short', () => {
-    expect(buildParity(BTC, '5m', [], expected5m(0, 60)).status).toBe('no-overlap');
-    expect(buildParity(BTC, '5m', minutes(0, 4), expected5m(0, 60)).status).toBe('no-overlap');
+    expect(buildParity(BTC, '5m', [], expected5m(0, 60), NOW).status).toBe('no-overlap');
+    expect(buildParity(BTC, '5m', minutes(0, 4), expected5m(0, 60), NOW).status).toBe('no-overlap');
+  });
+});
+
+describe('the settle rule', () => {
+  /** A day of minutes, with one 5m export bar's volume off by one unit. */
+  function dayWithVolumeOff(index: number): { source: Bar[]; exported: Bar[] } {
+    const exported = expected5m(0, 24 * 60);
+    const bar = exported[index];
+    if (bar === undefined) throw new Error('unreachable');
+    exported[index] = { ...bar, volume: volume(bar.volume + 1) };
+    return { source: minutes(0, 24 * 60), exported };
+  }
+  // With a 30-minute settle and the newest bar at 23:59, a 5m bar is settled
+  // if it closes by 23:29, i.e. opens by 23:24.
+  const SETTLE = { settleSeconds: 30 * 60 };
+
+  it('excuses a recent bar that differs, and counts it', () => {
+    const { source, exported } = dayWithVolumeOff(282); // 23:30
+    const result = buildParity(BTC, '5m', source, exported, SETTLE);
+    expect(result).toMatchObject({ status: 'exact', recentDiffers: 1 });
+  });
+
+  it('still compares recent bars that match, so short exports keep their coverage', () => {
+    const result = buildParity(BTC, '5m', minutes(0, 24 * 60), expected5m(0, 24 * 60), SETTLE);
+    // 288 buckets, less the one holding the source's last minute.
+    expect(result).toMatchObject({ status: 'exact', matched: 287, recentDiffers: 0 });
+  });
+
+  it('fails a difference on a settled bar', () => {
+    const { source, exported } = dayWithVolumeOff(280); // 23:20, settled
+    const result = buildParity(BTC, '5m', source, exported, SETTLE);
+    expect(result).toMatchObject({ status: 'differs', differing: 1, recentDiffers: 0 });
+  });
+
+  it('defaults to 14 days', () => {
+    expect(SETTLE_SECONDS).toBe(14 * 24 * 60 * 60);
+    // Everything in an hour-long series is recent, so a difference is excused.
+    const exported = expected5m(0, 60);
+    const bar = exported[3];
+    if (bar === undefined) throw new Error('unreachable');
+    exported[3] = { ...bar, volume: volume(bar.volume + 1) };
+    expect(buildParity(BTC, '5m', minutes(0, 60), exported)).toMatchObject({
+      status: 'exact',
+      recentDiffers: 1,
+    });
+  });
+});
+
+describe('a finer export that runs past the coarser one', () => {
+  it('does not count our bars beyond the export as recent differences', () => {
+    // The 5m export stops at 00:30; the 1m source runs on to 01:00.
+    const result = buildParity(BTC, '5m', minutes(0, 60), expected5m(0, 35));
+    expect(result).toMatchObject({ status: 'exact', matched: 7, recentDiffers: 0, extra: 0 });
+    expect(result.window?.until).toBe(at(30));
+  });
+});
+
+describe('approved exceptions', () => {
+  function exception(i: number, fields: BuildParityException['fields']): BuildParityException {
+    return { symbol: 'BTCUSD', timeframe: '5m', time: at(i), fields, reason: 'test', approved: 'test' };
+  }
+  function withVolumeOff(index: number): Bar[] {
+    const exported = expected5m(0, 60);
+    const bar = exported[index];
+    if (bar === undefined) throw new Error('unreachable');
+    exported[index] = { ...bar, volume: volume(bar.volume + 1) };
+    return exported;
+  }
+
+  it('sets aside a listed bar that differs exactly as listed: EXCEPTION, never EXACT', () => {
+    const result = buildParity(BTC, '5m', minutes(0, 60), withVolumeOff(3), {
+      ...NOW,
+      exceptions: [exception(15, ['volume'])],
+    });
+    expect(result).toMatchObject({ status: 'excepted', excepted: 1, matched: 10, staleExceptions: [] });
+  });
+
+  it('still fails when the listed bar differs on other fields than listed', () => {
+    const result = buildParity(BTC, '5m', minutes(0, 60), withVolumeOff(3), {
+      ...NOW,
+      exceptions: [exception(15, ['volume', 'high'])],
+    });
+    expect(result).toMatchObject({ status: 'differs', excepted: 0, staleExceptions: [at(15)] });
+  });
+
+  it('still fails on any difference not listed', () => {
+    const result = buildParity(BTC, '5m', minutes(0, 60), withVolumeOff(3), {
+      ...NOW,
+      exceptions: [exception(20, ['volume'])],
+    });
+    expect(result).toMatchObject({ status: 'differs', differing: 1, staleExceptions: [at(20)] });
+  });
+
+  it('reports a listed bar that no longer differs as stale, and passes as exact', () => {
+    const result = buildParity(BTC, '5m', minutes(0, 60), expected5m(0, 60), {
+      ...NOW,
+      exceptions: [exception(15, ['volume'])],
+    });
+    expect(result).toMatchObject({ status: 'exact', excepted: 0, staleExceptions: [at(15)] });
   });
 });
 

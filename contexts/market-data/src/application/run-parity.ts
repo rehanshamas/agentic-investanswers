@@ -12,6 +12,8 @@
 import type { Bar, BarTime, Instrument, MarketCalendar, Timeframe } from '@aia/shared-kernel';
 import { barTime, timeframeSeconds } from '@aia/shared-kernel';
 
+import { buildParityExceptions } from '../domain/build-parity-exceptions.js';
+import type { BuildParityException } from '../domain/build-parity-exceptions.js';
 import { buildParity, buildSource } from '../domain/build-parity.js';
 import type { ParityComparison } from '../domain/parity.js';
 import { compareBars } from '../domain/parity.js';
@@ -51,6 +53,10 @@ export interface RunParityDeps {
   readonly minutes?: OneMinuteBarSourcePort;
   /** Required to roll up instruments with sessions (stocks). */
   readonly calendar?: MarketCalendar;
+  /** Approved build-parity exceptions. Defaults to the committed list. */
+  readonly exceptions?: readonly BuildParityException[];
+  /** Build parity's settle time. Defaults to 14 days; tests on short samples pass 0. */
+  readonly settleSeconds?: number;
 }
 
 export class RunParityError extends Error {}
@@ -81,11 +87,15 @@ export type ParityResult =
       readonly message: string;
     };
 
-/** True only when every result was compared and is exact. */
+/** True only when every result was compared and is exact (or exact apart from approved exceptions). */
 export function parityPassed(results: readonly ParityResult[]): boolean {
   return (
     results.length > 0 &&
-    results.every((r) => r.kind === 'compared' && r.comparison.status === 'exact')
+    results.every(
+      (r) =>
+        r.kind === 'compared' &&
+        (r.comparison.status === 'exact' || r.comparison.status === 'excepted'),
+    )
   );
 }
 
@@ -159,7 +169,11 @@ export class RunParity {
         timeframe: target,
         file: exported.file,
         sourceFile: finer.file,
-        comparison: buildParity(instrument, target, finer.bars, exported.bars, this.deps.calendar),
+        comparison: buildParity(instrument, target, finer.bars, exported.bars, {
+          ...(this.deps.calendar === undefined ? {} : { calendar: this.deps.calendar }),
+          exceptions: buildParityExceptions(instrument.symbol, target, this.deps.exceptions),
+          ...(this.deps.settleSeconds === undefined ? {} : { settleSeconds: this.deps.settleSeconds }),
+        }),
       };
     } catch (error) {
       return {

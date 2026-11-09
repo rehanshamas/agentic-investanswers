@@ -14,6 +14,7 @@ import { formatScaled } from '@aia/shared-kernel';
 
 import type { ParityResult } from '../application/run-parity.js';
 import { parityPassed } from '../application/run-parity.js';
+import { BUILD_PARITY_EXCEPTIONS } from '../domain/build-parity-exceptions.js';
 import type { BarDifference, BarField } from '../domain/parity.js';
 import { BAR_FIELDS } from '../domain/parity.js';
 
@@ -28,6 +29,8 @@ function statusLabel(result: ParityResult): string {
   switch (result.comparison.status) {
     case 'exact':
       return 'EXACT';
+    case 'excepted':
+      return 'EXCEPTION';
     case 'differs':
       return 'FAIL';
     case 'not-built':
@@ -62,7 +65,11 @@ function windowText(result: ParityResult): string {
 }
 
 function summaryRow(result: ParityResult, withSource: boolean): string[] {
-  const source = withSource ? [result.kind === 'compared' ? (result.sourceFile ?? '') : ''] : [];
+  const source = withSource
+    ? result.kind === 'compared'
+      ? [String(result.comparison.recentDiffers ?? 0), result.sourceFile ?? '']
+      : ['', '']
+    : [];
   if (result.kind !== 'compared') {
     return [result.file, statusLabel(result), '-', '', '', '', '', '', ...source];
   }
@@ -157,10 +164,10 @@ export function formatParityReport(
   lines.push(
     ...table(
       [
-        withSource ? [...header, 'FROM'] : header,
+        withSource ? [...header, 'RECENT DIFF', 'FROM'] : header,
         ...results.map((r) => summaryRow(r, withSource)),
       ],
-      new Set([3, 4, 5, 6, 7]),
+      new Set(withSource ? [3, 4, 5, 6, 7, 8] : [3, 4, 5, 6, 7]),
     ),
   );
 
@@ -196,18 +203,61 @@ export function formatParityReport(
             'partial). Inside the window nothing is skipped.',
     );
   }
+  const recent = results.reduce(
+    (sum, r) => sum + (r.kind === 'compared' ? (r.comparison.recentDiffers ?? 0) : 0),
+    0,
+  );
+  if (withSource && recent > 0) {
+    notes.push(
+      `RECENT DIFF: ${recent} bars that closed within 14 days of the newest bar in either export ` +
+        "differ, and are excused: TradingView's live-built bars are not yet reconciled across its " +
+        'timeframes. Recent bars that match are counted in MATCH. Older bars must be exact.',
+    );
+  }
+  notes.push(...exceptionNotes(results));
   if (notes.length > 0) lines.push('', ...notes);
 
-  const exact = results.filter(
-    (r) => r.kind === 'compared' && r.comparison.status === 'exact',
-  ).length;
+  const count = (status: string): number =>
+    results.filter((r) => r.kind === 'compared' && r.comparison.status === status).length;
+  const exact = count('exact');
+  const excepted = count('excepted');
+  const withExceptions = excepted > 0 ? `, ${excepted} more exact apart from approved exceptions` : '';
   lines.push(
     '',
     parityPassed(results)
-      ? `${label} OK: ${exact} of ${results.length} files exact.`
-      : `${label} FAILED: ${exact} of ${results.length} files exact.`,
+      ? `${label} OK: ${exact} of ${results.length} files exact${withExceptions}.`
+      : `${label} FAILED: ${exact} of ${results.length} files exact${withExceptions}.`,
   );
   return lines.join('\n');
+}
+
+/** One note per exception applied, with its reason, and one per stale exception. */
+function exceptionNotes(results: readonly ParityResult[]): string[] {
+  const notes: string[] = [];
+  for (const result of results) {
+    if (result.kind !== 'compared') continue;
+    const stale = new Set(result.comparison.staleExceptions ?? []);
+    for (const time of stale) {
+      notes.push(
+        `STALE EXCEPTION: ${result.file} ${formatUtc(time)} no longer differs as listed; ` +
+          'remove it from build-parity-exceptions.ts (with Sham).',
+      );
+    }
+    if ((result.comparison.excepted ?? 0) === 0) continue;
+    for (const exception of BUILD_PARITY_EXCEPTIONS) {
+      if (
+        exception.symbol === result.instrument.symbol &&
+        exception.timeframe === result.timeframe &&
+        !stale.has(exception.time)
+      ) {
+        notes.push(
+          `EXCEPTION: ${result.file} ${formatUtc(exception.time)} ${exception.fields.join(', ')}: ` +
+            `${exception.reason} Approved: ${exception.approved}.`,
+        );
+      }
+    }
+  }
+  return notes;
 }
 
 function percent(part: number, whole: number): string {
