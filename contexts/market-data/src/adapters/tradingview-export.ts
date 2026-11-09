@@ -7,7 +7,8 @@
 //
 // It lives in this context because `market-data` owns bars, and as an adapter
 // because it touches the file system. It is used by the parity harness
-// (M1-03), not by any production path.
+// (M1-03), through `TradingViewExportSource` at the bottom, and by no
+// production path.
 
 import { readFile, readdir } from 'node:fs/promises';
 
@@ -22,6 +23,8 @@ import {
   volume,
 } from '@aia/shared-kernel';
 
+import type { ParityExport, ParityExportSourcePort } from '../application/run-parity.js';
+import { ParityExportMissingError } from '../application/run-parity.js';
 import { storageToken } from '../domain/cooked-partition.js';
 
 export class FixtureError extends Error {}
@@ -267,4 +270,30 @@ export function summariseFixtures(fixtures: readonly ParityFixture[]): string {
   const total = fixtures.reduce((sum, f) => sum + f.bars.length, 0);
   lines.push(`${'TOTAL'.padEnd(widest)}  ${String(total).padStart(7)}`);
   return lines.join('\n');
+}
+
+/**
+ * The exports as the parity run reads them.
+ *
+ * A missing file becomes `ParityExportMissingError`, so the run reports it
+ * against that file and carries on. A file that is present but malformed
+ * still throws `FixtureError`: a broken spec should stop the run, not be
+ * listed as one row among many.
+ */
+export class TradingViewExportSource implements ParityExportSourcePort {
+  constructor(private readonly options: LoadOptions = {}) {}
+
+  async load(instrument: Instrument, timeframe: Timeframe): Promise<ParityExport> {
+    const dir = this.options.dir ?? DEFAULT_FIXTURE_DIR;
+    const file = fixtureFileName(instrument.symbol, timeframe);
+    if (!(await listFixtureFiles(dir)).includes(file)) {
+      throw new ParityExportMissingError(
+        file,
+        `${file} is missing from ${dir}. The exports are not committed while the repo is ` +
+          `public (OI-04, M1-13); place them there by hand.`,
+      );
+    }
+    const fixture = await loadFixture(instrument, timeframe, this.options);
+    return { file: fixture.file, bars: fixture.bars };
+  }
 }

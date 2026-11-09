@@ -11,6 +11,7 @@
     "test": "nx run-many -t test",
     "typecheck": "nx run-many -t typecheck",
     "check": "nx affected -t lint test typecheck",
+    "parity": "tsx apps/hydration/src/parity.ts",
     "owner-inputs": "node scripts/owner-inputs.mjs",
     "status": "node scripts/status.mjs"
   },
@@ -19,6 +20,7 @@
     "@types/node": "^22.20.5",
     "eslint": "10.13.0",
     "nx": "24.0.2",
+    "tsx": "^4.23.15",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.72.1",
     "vitest": "^4.1.12"

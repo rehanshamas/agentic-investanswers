@@ -7,6 +7,23 @@ export { CookIntraday, CookIntradayError, INTRADAY_ROLLUPS } from './application
 export { RollUpError, affectedBarTimes, rollUp } from './domain/roll-up.js';
 export { CookedStoreError } from './application/cooked-bar-store-port.js';
 
+export type {
+  BarDifference,
+  BarField,
+  ParityComparison,
+  ParityStatus,
+  ParityWindow,
+} from './domain/parity.js';
+export { BAR_FIELDS, ParityError, compareBars, parityWindow } from './domain/parity.js';
+export type {
+  ParityExport,
+  ParityExportSourcePort,
+  ParityResult,
+  RunParityDeps,
+} from './application/run-parity.js';
+export { ParityExportMissingError, RunParity, parityPassed } from './application/run-parity.js';
+export { formatDifference, formatParityReport, formatUtc } from './adapters/parity-report.js';
+
 export {
   CookedPartitionError,
   partitionOf,
@@ -27,6 +44,7 @@ export {
   loadFixture,
   loadFixtures,
   summariseFixtures,
+  TradingViewExportSource,
 } from './adapters/tradingview-export.js';
 
 export {
