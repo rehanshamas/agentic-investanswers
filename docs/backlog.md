@@ -29,6 +29,7 @@ To start a task, ask Claude: "Start task M1-06". It copies the template into `ta
 | M1-11 | Latency probe: minute close → raw stored → cooked, per symbol | A | M1-05 | p50/p95 printed; logged as a metric |
 | M1-12 | Extend the market calendar to 1999–2027: NYSE holidays, early closes **and unscheduled closures** (9/11, Hurricane Sandy, funeral closures), replacing M0-04's hard 2020–2026 error | C | M0-04 | `isTradingDay` answers for 1999-01-22 and 2027-12-31; 2001-09-11 to 09-14 and 2012-10-29 to 10-30 are not trading days; the early-close list covers the pre-2004 era, when half days were more common |
 | M1-13 | Commit the parity fixtures and turn on the required CI parity job, once the repo is private and on GitHub Pro: move the TradingView exports out of `.gitignore`, commit with the `fixtures-approved` label, add the parity job to `ci.yml` | A | M1-03, repo private | `pnpm parity` runs in CI against the real exports; a deliberately wrong bar fails the PR |
+| M1-14 | **Split parity** (Sham, 2026-11-09): exact *build parity* (TradingView bars through our rollups must equal TradingView's higher-timeframe exports) and reported *source fidelity* (provider bars vs exports, match rates per field) | A | M1-03, M1-04 | `pnpm parity` runs both; build parity decides the exit code; both run on the synthetic samples in CI |
 
 ## M2: Chart, sign-in and access (Weeks 2 to 3; Week 3 also carries M4-01)
 | ID | Task | Lane | → | Done when |
