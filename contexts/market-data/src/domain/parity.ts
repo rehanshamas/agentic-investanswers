@@ -52,6 +52,18 @@ export interface ParityComparison {
   readonly extra: number;
   /** The earliest difference of any kind, which is where to start looking. */
   readonly first: BarDifference | undefined;
+  /** Among bars present on both sides, how many differ on each field. */
+  readonly fieldDiffers: Readonly<Record<BarField, number>>;
+  /**
+   * Largest relative volume difference among bars present on both sides,
+   * `|ours - theirs| / theirs`; 0 when every volume matches. Source fidelity
+   * reports it, since a feed missing trades shows up here first.
+   */
+  readonly maxVolumeDeviation: number;
+}
+
+function noFieldDiffers(): Record<BarField, number> {
+  return { open: 0, high: 0, low: 0, close: 0, volume: 0 };
 }
 
 /**
@@ -119,7 +131,14 @@ export function compareBars(theirs: readonly Bar[], ours: readonly Bar[]): Parit
   assertAscending(theirs, 'Export');
   assertAscending(ours, 'Our');
 
-  const empty = { matched: 0, differing: 0, extra: 0, first: undefined };
+  const empty = {
+    matched: 0,
+    differing: 0,
+    extra: 0,
+    first: undefined,
+    fieldDiffers: noFieldDiffers(),
+    maxVolumeDeviation: 0,
+  };
   if (ours.length === 0) {
     const theirFirst = theirs[0];
     const theirLast = theirs[theirs.length - 1];
@@ -144,6 +163,8 @@ export function compareBars(theirs: readonly Bar[], ours: readonly Bar[]): Parit
   let missing = 0;
   let extra = 0;
   let first: BarDifference | undefined;
+  const fieldDiffers = noFieldDiffers();
+  let maxVolumeDeviation = 0;
   const note = (difference: BarDifference): void => {
     if (first === undefined) first = difference;
   };
@@ -165,6 +186,11 @@ export function compareBars(theirs: readonly Bar[], ours: readonly Bar[]): Parit
       j++;
     } else if (t !== undefined && o !== undefined) {
       const fields = differingFields(t, o);
+      for (const field of fields) fieldDiffers[field]++;
+      if (t.volume !== o.volume) {
+        const deviation = t.volume === 0 ? 1 : Math.abs(o.volume - t.volume) / t.volume;
+        if (deviation > maxVolumeDeviation) maxVolumeDeviation = deviation;
+      }
       if (fields.length === 0) {
         matched++;
       } else {
@@ -177,5 +203,15 @@ export function compareBars(theirs: readonly Bar[], ours: readonly Bar[]): Parit
   }
 
   const status: ParityStatus = differing + missing + extra === 0 ? 'exact' : 'differs';
-  return { status, window, matched, differing, missing, extra, first };
+  return {
+    status,
+    window,
+    matched,
+    differing,
+    missing,
+    extra,
+    first,
+    fieldDiffers,
+    maxVolumeDeviation,
+  };
 }

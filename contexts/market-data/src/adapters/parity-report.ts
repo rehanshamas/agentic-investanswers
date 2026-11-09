@@ -1,5 +1,10 @@
-// Turn parity results into the report `pnpm parity` prints: a summary table,
-// then the first differing bar of every file that is not exact.
+// Turn parity results into the report `pnpm parity` prints.
+//
+// - `formatParityReport`: an exact comparison — a summary table, the first
+//   differing bar of every file that is not exact, and a verdict. Build
+//   parity uses it (with a FROM column naming the export rebuilt from).
+// - `formatFidelityReport`: source fidelity, reported only — how often each
+//   field matches, and the largest volume gap. It has no verdict.
 //
 // Values are printed at the instrument's scale with `formatScaled`, which is
 // exact, so what the report shows is exactly what was compared.
@@ -19,6 +24,7 @@ export function formatUtc(time: BarTime): string {
 
 function statusLabel(result: ParityResult): string {
   if (result.kind === 'no-export') return 'NO EXPORT';
+  if (result.kind === 'error') return 'ERROR';
   switch (result.comparison.status) {
     case 'exact':
       return 'EXACT';
@@ -49,23 +55,39 @@ function table(rows: readonly (readonly string[])[], rightAligned: ReadonlySet<n
   );
 }
 
-function summaryRow(result: ParityResult): string[] {
-  if (result.kind === 'no-export') {
-    return [result.file, statusLabel(result), '-', '', '', '', '', ''];
+function windowText(result: ParityResult): string {
+  if (result.kind !== 'compared' || result.comparison.window === undefined) return '-';
+  const { from, until } = result.comparison.window;
+  return `${formatUtc(from)} .. ${formatUtc(until)}`;
+}
+
+function summaryRow(result: ParityResult, withSource: boolean): string[] {
+  const source = withSource ? [result.kind === 'compared' ? (result.sourceFile ?? '') : ''] : [];
+  if (result.kind !== 'compared') {
+    return [result.file, statusLabel(result), '-', '', '', '', '', '', ...source];
   }
   const c = result.comparison;
-  const window =
-    c.window === undefined ? '-' : `${formatUtc(c.window.from)} .. ${formatUtc(c.window.until)}`;
   return [
     result.file,
     statusLabel(result),
-    window,
+    windowText(result),
     String(c.matched),
     String(c.differing),
     String(c.missing),
     String(c.extra),
     String(c.window?.skipped ?? 0),
+    ...source,
   ];
+}
+
+/** Errors and missing exports, shared by both reports. */
+function problemNotes(results: readonly ParityResult[]): string[] {
+  const notes: string[] = [];
+  for (const result of results) {
+    if (result.kind === 'no-export') notes.push(`NO EXPORT: ${result.message}`);
+    if (result.kind === 'error') notes.push(`ERROR: ${result.message}`);
+  }
+  return notes;
 }
 
 function cells(instrument: Instrument, bar: Bar | undefined): string[] {
@@ -118,14 +140,25 @@ export function formatDifference(
   ].join('\n');
 }
 
+export interface ParityReportOptions {
+  /** Names the check in the verdict, for example `BUILD PARITY`. */
+  readonly label?: string;
+}
+
 /** The full report: summary, first differences, what to do next, verdict. */
-export function formatParityReport(results: readonly ParityResult[]): string {
+export function formatParityReport(
+  results: readonly ParityResult[],
+  options: ParityReportOptions = {},
+): string {
+  const label = options.label ?? 'PARITY';
+  const withSource = results.some((r) => r.kind === 'compared' && r.sourceFile !== undefined);
+  const header = ['FILE', 'STATUS', 'WINDOW (UTC)', 'MATCH', 'DIFFER', 'MISSING', 'EXTRA', 'SKIPPED'];
   const lines: string[] = [];
   lines.push(
     ...table(
       [
-        ['FILE', 'STATUS', 'WINDOW (UTC)', 'MATCH', 'DIFFER', 'MISSING', 'EXTRA', 'SKIPPED'],
-        ...results.map(summaryRow),
+        withSource ? [...header, 'FROM'] : header,
+        ...results.map((r) => summaryRow(r, withSource)),
       ],
       new Set([3, 4, 5, 6, 7]),
     ),
@@ -147,15 +180,20 @@ export function formatParityReport(results: readonly ParityResult[]): string {
     );
   }
   if (has('NO OVERLAP')) {
-    notes.push('NO OVERLAP: we hold bars, but our history starts after the export ends.');
+    notes.push(
+      withSource
+        ? 'NO OVERLAP: the finer export covers no complete bar of this one.'
+        : 'NO OVERLAP: we hold bars, but our history starts after the export ends.',
+    );
   }
-  for (const result of results) {
-    if (result.kind === 'no-export') notes.push(`NO EXPORT: ${result.message}`);
-  }
+  notes.push(...problemNotes(results));
   if (results.some((r) => r.kind === 'compared' && (r.comparison.window?.skipped ?? 0) > 0)) {
     notes.push(
-      'SKIPPED: export bars before our history begins (plus our first bar, which may be ' +
-        'partial). Inside the window nothing is skipped.',
+      withSource
+        ? 'SKIPPED: export bars before the finer export begins (plus the first rebuilt bar ' +
+            'when the finer export starts inside it). Inside the window nothing is skipped.'
+        : 'SKIPPED: export bars before our history begins (plus our first bar, which may be ' +
+            'partial). Inside the window nothing is skipped.',
     );
   }
   if (notes.length > 0) lines.push('', ...notes);
@@ -166,8 +204,64 @@ export function formatParityReport(results: readonly ParityResult[]): string {
   lines.push(
     '',
     parityPassed(results)
-      ? `PARITY OK: ${exact} of ${results.length} files exact.`
-      : `PARITY FAILED: ${exact} of ${results.length} files exact.`,
+      ? `${label} OK: ${exact} of ${results.length} files exact.`
+      : `${label} FAILED: ${exact} of ${results.length} files exact.`,
   );
   return lines.join('\n');
+}
+
+function percent(part: number, whole: number): string {
+  if (whole === 0) return '-';
+  const value = (100 * part) / whole;
+  // Never round a shortfall up to 100: 99.996% prints as 99.99, not 100.00.
+  return (Math.floor(value * 100) / 100).toFixed(2);
+}
+
+/**
+ * Source fidelity: our stored bars against each export, as match rates.
+ *
+ * Reported, never a verdict (Sham, 2026-11-09): TradingView's record misses
+ * trades, so volume can never match a venue's own candles exactly. The rates
+ * show how close our data is; build parity is what proves our bar building.
+ */
+export function formatFidelityReport(results: readonly ParityResult[]): string {
+  const rows = results.map((result) => {
+    if (result.kind !== 'compared') {
+      return [result.file, statusLabel(result), '-', '', '', '', '', '', '', '', '', ''];
+    }
+    const c = result.comparison;
+    const both = c.matched + c.differing;
+    const equal = (field: BarField): string => percent(both - c.fieldDiffers[field], both);
+    const status = c.status === 'exact' ? 'EXACT' : c.status === 'differs' ? 'DIFFERS' : statusLabel(result);
+    return [
+      result.file,
+      status,
+      windowText(result),
+      String(both),
+      equal('open'),
+      equal('high'),
+      equal('low'),
+      equal('close'),
+      equal('volume'),
+      both === 0 ? '-' : `${(c.maxVolumeDeviation * 100).toFixed(2)}`,
+      String(c.missing),
+      String(c.extra),
+    ];
+  });
+  const lines = table(
+    [
+      ['FILE', 'STATUS', 'WINDOW (UTC)', 'BARS', 'OPEN%', 'HIGH%', 'LOW%', 'CLOSE%', 'VOL%', 'MAX dVOL%', 'MISSING', 'EXTRA'],
+      ...rows,
+    ],
+    new Set([3, 4, 5, 6, 7, 8, 9, 10, 11]),
+  );
+  const notes = [
+    'Each % is the share of bars present on both sides that are equal on that field. ' +
+      'MAX dVOL% is the largest volume gap, relative to the export.',
+    ...problemNotes(results),
+  ];
+  if (results.some((r) => statusLabel(r) === 'NOT BUILT')) {
+    notes.push('NOT BUILT: we hold no bars in that export\'s range yet.');
+  }
+  return [...lines, '', ...notes, '', 'Source fidelity is reported only; it does not affect the exit code.'].join('\n');
 }

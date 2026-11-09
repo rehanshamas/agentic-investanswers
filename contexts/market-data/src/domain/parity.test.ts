@@ -127,3 +127,23 @@ describe('parityWindow', () => {
     expect(compareBars(series(0, 1, 2), series(1)).status).toBe('no-overlap');
   });
 });
+
+describe('compareBars field counts, for source fidelity', () => {
+  it('counts differing bars per field and the largest relative volume gap', () => {
+    const ours = series(0, 1, 2, 3);
+    const [b0, b1, , b3] = ours;
+    if (b0 === undefined || b1 === undefined || b3 === undefined) throw new Error('unreachable');
+    ours[1] = { ...b1, volume: volume(Math.round(b1.volume * 1.02)) }; // +2%
+    ours[3] = { ...b3, low: price(b3.low - 1), volume: volume(Math.round(b3.volume * 0.97)) }; // -3%
+    const result = compareBars(series(0, 1, 2, 3), ours);
+    expect(result.fieldDiffers).toEqual({ open: 0, high: 0, low: 1, close: 0, volume: 2 });
+    expect(result.maxVolumeDeviation).toBeCloseTo(0.03, 10);
+  });
+
+  it('is all zero when exact, and when nothing is built', () => {
+    for (const result of [compareBars(series(0, 1), series(0, 1)), compareBars(series(0, 1), [])]) {
+      expect(result.fieldDiffers).toEqual({ open: 0, high: 0, low: 0, close: 0, volume: 0 });
+      expect(result.maxVolumeDeviation).toBe(0);
+    }
+  });
+});
