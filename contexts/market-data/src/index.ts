@@ -15,14 +15,26 @@ export type {
   ParityWindow,
 } from './domain/parity.js';
 export { BAR_FIELDS, ParityError, compareBars, parityWindow } from './domain/parity.js';
+export { BUILD_SOURCES, buildParity, buildSource } from './domain/build-parity.js';
 export type {
   ParityExport,
   ParityExportSourcePort,
   ParityResult,
   RunParityDeps,
 } from './application/run-parity.js';
-export { ParityExportMissingError, RunParity, parityPassed } from './application/run-parity.js';
-export { formatDifference, formatParityReport, formatUtc } from './adapters/parity-report.js';
+export {
+  ParityExportMissingError,
+  RunParity,
+  RunParityError,
+  parityPassed,
+} from './application/run-parity.js';
+export type { ParityReportOptions } from './adapters/parity-report.js';
+export {
+  formatDifference,
+  formatFidelityReport,
+  formatParityReport,
+  formatUtc,
+} from './adapters/parity-report.js';
 
 export {
   CookedPartitionError,
