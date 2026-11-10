@@ -21,14 +21,15 @@ To start a task, ask Claude: "Start task M1-06". It copies the template into `ta
 | M1-03 | **Bar parity harness** `pnpm parity`: compares cooked bars to fixtures on OHLCV, reports the first differing bar and a summary table. Runs against committed **synthetic samples** in CI and against the real exports locally; the required CI parity job waits for M1-13 | A | M1-01, M1-02 | Runs; fails with a readable report while nothing is built |
 | M1-04 | CoinAPI history backfill for BTC/ETH 1m into the raw store; idempotent, resumable | B | M1-01 | 2+ years stored locally; re-run writes nothing new |
 | M1-05 | CoinAPI live stream: forming bar in memory, closed 1m to raw store, reconnect with backoff, gap marked on disconnect | B | M1-01 | Replay of a recorded stream gives the same bars as the fixture; a reconnect test |
-| M1-06 | Cook intraday rollups 1m → 5m/15m/1h/4h, incrementally (one new 1m updates only the affected bars) | C | M1-01 | `pnpm parity` green for BTC/ETH intraday |
+| M1-06 | Cook intraday rollups 1m → 5m/15m/1h/4h, incrementally (one new 1m updates only the affected bars) | C | M1-01 | `pnpm parity` build parity green for BTC/ETH intraday (source fidelity reported) |
 | M1-07 | Massive (stocks) backfill and live stream for 2 symbols, same ports as crypto | B | M1-01 | Replay test; history stored |
-| M1-08 | Cook D/W/M and stock session-aware rollups (regular hours, holidays) | C | M1-06, M0-03 | `pnpm parity` green for all 4 symbols on all timeframes (stocks D/W can spill into Week 2) |
+| M1-08 | Cook D/W/M and stock session-aware rollups (regular hours, holidays) | C | M1-06, M0-03 | `pnpm parity` build parity green for all 4 symbols on all timeframes (stocks D/W can spill into Week 2); source fidelity reported |
 | M1-09 | Gap detector + auto re-fetch (completeness check), per market hours | A | M1-04, M1-07 | Test deletes minutes; they are found, re-fetched and re-cooked |
 | M1-10 | Rebuild check: re-cook every timeframe from raw and diff against stored cooked bars | A | M1-06 | `pnpm rebuild-check` reports 0 differences |
 | M1-11 | Latency probe: minute close → raw stored → cooked, per symbol | A | M1-05 | p50/p95 printed; logged as a metric |
 | M1-12 | Extend the market calendar to 1999–2027: NYSE holidays, early closes **and unscheduled closures** (9/11, Hurricane Sandy, funeral closures), replacing M0-04's hard 2020–2026 error | C | M0-04 | `isTradingDay` answers for 1999-01-22 and 2027-12-31; 2001-09-11 to 09-14 and 2012-10-29 to 10-30 are not trading days; the early-close list covers the pre-2004 era, when half days were more common |
 | M1-13 | Commit the parity fixtures and turn on the required CI parity job, once the repo is private and on GitHub Pro: move the TradingView exports out of `.gitignore`, commit with the `fixtures-approved` label, add the parity job to `ci.yml` | A | M1-03, repo private | `pnpm parity` runs in CI against the real exports; a deliberately wrong bar fails the PR |
+| M1-14 | **Split parity** (Sham, 2026-11-09): exact *build parity* (TradingView bars through our rollups must equal TradingView's higher-timeframe exports) and reported *source fidelity* (provider bars vs exports, match rates per field) | A | M1-03, M1-04 | `pnpm parity` runs both; build parity decides the exit code; both run on the synthetic samples in CI |
 
 ## M2: Chart, sign-in and access (Weeks 2 to 3; Week 3 also carries M4-01)
 | ID | Task | Lane | → | Done when |

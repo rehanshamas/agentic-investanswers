@@ -1,13 +1,20 @@
-// Run bar parity: for each instrument and timeframe, load the export, read
-// our bars over its range, and compare them (docs/bar-rules.md, "Comparing
-// against the exports").
+// Run the two parity checks (docs/bar-rules.md, "Comparing against the
+// exports"; split by Sham on 2026-11-09, M1-14):
+// - `runBuild`: build parity, exact and blocking. TradingView's finer export
+//   rolled up by our code against its higher-timeframe export. Needs only the
+//   exports.
+// - `run`: source fidelity, reported only. Our stored bars against the
+//   export. Needs the cooked store and the 1m source.
 //
 // Every reader is a port. The CLI wires the real export files, the cooked
 // store and the raw store behind them; the tests wire memory.
 
-import type { Bar, BarTime, Instrument, Timeframe } from '@aia/shared-kernel';
+import type { Bar, BarTime, Instrument, MarketCalendar, Timeframe } from '@aia/shared-kernel';
 import { barTime, timeframeSeconds } from '@aia/shared-kernel';
 
+import { buildParityExceptions } from '../domain/build-parity-exceptions.js';
+import type { BuildParityException } from '../domain/build-parity-exceptions.js';
+import { buildParity, buildSource } from '../domain/build-parity.js';
 import type { ParityComparison } from '../domain/parity.js';
 import { compareBars } from '../domain/parity.js';
 import type { CookedBarStorePort } from './cooked-bar-store-port.js';
@@ -40,11 +47,19 @@ export class ParityExportMissingError extends Error {
 
 export interface RunParityDeps {
   readonly exports: ParityExportSourcePort;
-  /** 5m and above. */
-  readonly cooked: Pick<CookedBarStorePort, 'getRange'>;
-  /** 1m is not cooked: it is raw, read through the port the app wires. */
-  readonly minutes: OneMinuteBarSourcePort;
+  /** Source fidelity, 5m and above. Not needed for build parity. */
+  readonly cooked?: Pick<CookedBarStorePort, 'getRange'>;
+  /** Source fidelity, 1m: raw, read through the port the app wires. */
+  readonly minutes?: OneMinuteBarSourcePort;
+  /** Required to roll up instruments with sessions (stocks). */
+  readonly calendar?: MarketCalendar;
+  /** Approved build-parity exceptions. Defaults to the committed list. */
+  readonly exceptions?: readonly BuildParityException[];
+  /** Build parity's settle time. Defaults to 14 days; tests on short samples pass 0. */
+  readonly settleSeconds?: number;
 }
+
+export class RunParityError extends Error {}
 
 export type ParityResult =
   | {
@@ -53,6 +68,8 @@ export type ParityResult =
       readonly timeframe: Timeframe;
       readonly file: string;
       readonly comparison: ParityComparison;
+      /** Build parity only: the export the bars were rebuilt from. */
+      readonly sourceFile?: string;
     }
   | {
       readonly kind: 'no-export';
@@ -60,13 +77,25 @@ export type ParityResult =
       readonly timeframe: Timeframe;
       readonly file: string;
       readonly message: string;
+    }
+  | {
+      /** The check itself could not run, for example a calendar out of range. */
+      readonly kind: 'error';
+      readonly instrument: Instrument;
+      readonly timeframe: Timeframe;
+      readonly file: string;
+      readonly message: string;
     };
 
-/** True only when every result was compared and is exact. */
+/** True only when every result was compared and is exact (or exact apart from approved exceptions). */
 export function parityPassed(results: readonly ParityResult[]): boolean {
   return (
     results.length > 0 &&
-    results.every((r) => r.kind === 'compared' && r.comparison.status === 'exact')
+    results.every(
+      (r) =>
+        r.kind === 'compared' &&
+        (r.comparison.status === 'exact' || r.comparison.status === 'excepted'),
+    )
   );
 }
 
@@ -86,6 +115,7 @@ function lookbackSeconds(timeframe: Timeframe): number {
 export class RunParity {
   constructor(private readonly deps: RunParityDeps) {}
 
+  /** Source fidelity: our stored bars against each export. */
   async run(
     instruments: readonly Instrument[],
     timeframes: readonly Timeframe[],
@@ -97,6 +127,63 @@ export class RunParity {
       }
     }
     return results;
+  }
+
+  /**
+   * Build parity for every target that has a finer export to rebuild it
+   * from (all but 1m). A missing target or source export is a NO EXPORT row.
+   */
+  async runBuild(
+    instruments: readonly Instrument[],
+    targets: readonly Timeframe[],
+  ): Promise<ParityResult[]> {
+    const results: ParityResult[] = [];
+    for (const instrument of instruments) {
+      for (const target of targets) {
+        const source = buildSource(target);
+        if (source === undefined) continue;
+        results.push(await this.buildOne(instrument, target, source));
+      }
+    }
+    return results;
+  }
+
+  private async buildOne(
+    instrument: Instrument,
+    target: Timeframe,
+    source: Timeframe,
+  ): Promise<ParityResult> {
+    let exported: ParityExport;
+    let finer: ParityExport;
+    try {
+      exported = await this.deps.exports.load(instrument, target);
+      finer = await this.deps.exports.load(instrument, source);
+    } catch (error) {
+      if (!(error instanceof ParityExportMissingError)) throw error;
+      return { kind: 'no-export', instrument, timeframe: target, file: error.file, message: error.message };
+    }
+    try {
+      return {
+        kind: 'compared',
+        instrument,
+        timeframe: target,
+        file: exported.file,
+        sourceFile: finer.file,
+        comparison: buildParity(instrument, target, finer.bars, exported.bars, {
+          ...(this.deps.calendar === undefined ? {} : { calendar: this.deps.calendar }),
+          exceptions: buildParityExceptions(instrument.symbol, target, this.deps.exceptions),
+          ...(this.deps.settleSeconds === undefined ? {} : { settleSeconds: this.deps.settleSeconds }),
+        }),
+      };
+    } catch (error) {
+      return {
+        kind: 'error',
+        instrument,
+        timeframe: target,
+        file: exported.file,
+        message: `${exported.file} from ${finer.file}: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
   }
 
   private async runOne(instrument: Instrument, timeframe: Timeframe): Promise<ParityResult> {
@@ -135,7 +222,12 @@ export class RunParity {
     from: BarTime,
     until: BarTime,
   ): Promise<Bar[]> {
-    if (timeframe === '1m') return this.deps.minutes.read(instrument.symbol, from, until);
-    return this.deps.cooked.getRange(instrument.symbol, timeframe, from, until);
+    const { cooked, minutes } = this.deps;
+    if (timeframe === '1m') {
+      if (minutes === undefined) throw new RunParityError('Source fidelity needs a 1m source');
+      return minutes.read(instrument.symbol, from, until);
+    }
+    if (cooked === undefined) throw new RunParityError('Source fidelity needs the cooked store');
+    return cooked.getRange(instrument.symbol, timeframe, from, until);
   }
 }
