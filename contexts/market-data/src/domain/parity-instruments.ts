@@ -53,6 +53,12 @@ export const NVDA: Instrument = {
   timeZone: 'America/New_York',
   priceScale: 2,
   volumeScale: 0,
+  // Raw keeps what Massive sends (M1-07): sub-penny prices and fractional
+  // shares, both to 6 places. Measured: on 2026-11-05, 523 of 958 minutes had
+  // a 4-decimal price and every minute a fractional volume; on 2026-11-09, 9
+  // minutes had 6-decimal prices (for example 174.617297).
+  rawPriceScale: 6,
+  rawVolumeScale: 6,
 };
 
 /** TSLA. Same provisional venue note as NVDA. */
@@ -63,6 +69,8 @@ export const TSLA: Instrument = {
   timeZone: 'America/New_York',
   priceScale: 2,
   volumeScale: 0,
+  rawPriceScale: 6,
+  rawVolumeScale: 6,
 };
 
 /** Both crypto instruments: the set with complete, verified fixtures today. */
