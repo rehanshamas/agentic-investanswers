@@ -9,8 +9,13 @@ import type { OneMinuteBarSourcePort } from '@aia/market-data';
 import type { Bar, BarTime } from '@aia/shared-kernel';
 import { addDays, zonedDateKey } from '@aia/shared-kernel';
 
-/** Which provider's raw files hold an instrument's 1-minute bars. */
-export type ProviderOf = (symbol: string) => string;
+/**
+ * Which provider's raw files hold an instrument's 1-minute bars on a UTC day,
+ * or `undefined` if no provider serves that day. Per day, because the feed
+ * plan can switch provider (CLAUDE.md rule 7) and older days stay where they
+ * were stored.
+ */
+export type ProviderOf = (symbol: string, date: string) => string | undefined;
 
 export class RawMinuteSource implements OneMinuteBarSourcePort {
   constructor(
@@ -18,13 +23,14 @@ export class RawMinuteSource implements OneMinuteBarSourcePort {
     private readonly providerOf: ProviderOf,
   ) {}
 
-  /** One GET per UTC day in the range; a day never written is a gap. */
+  /** One GET per UTC day in the range; a day never written, or served by no provider, is a gap. */
   async read(symbol: string, from: BarTime, until: BarTime): Promise<Bar[]> {
     if (until < from) return [];
-    const provider = this.providerOf(symbol);
     const last = zonedDateKey(until, 'UTC');
     const bars: Bar[] = [];
     for (let date = zonedDateKey(from, 'UTC'); date <= last; date = addDays(date, 1)) {
+      const provider = this.providerOf(symbol, date);
+      if (provider === undefined) continue;
       const day = await this.raw.getDay({ provider, symbol, date });
       if (day === undefined) continue;
       for (const bar of day) {

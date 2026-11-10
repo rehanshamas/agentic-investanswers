@@ -46,3 +46,24 @@ export { GapRepair } from './application/gap-repair.js';
 export { expectedSpan, findHoles, holeRuns } from './domain/gaps.js';
 export { assertStorableFill, mergeDay } from './domain/raw-day.js';
 export { rawFillKey } from './adapters/s3-raw-bar-store.js';
+
+// Feed independence (CLAUDE.md rule 7): the plan says which provider serves
+// what, and the registry is the only place a provider name becomes an adapter.
+export type {
+  FeedPlan,
+  FeedSource,
+  HistorySegment,
+  HistorySource,
+  InstrumentFeeds,
+} from './domain/feed-plan.js';
+export {
+  FeedPlanError,
+  feedsFor,
+  historySegments,
+  historySourceOn,
+  historyStart,
+  liveSourceOn,
+  parseFeedPlan,
+} from './domain/feed-plan.js';
+export type { AdapterEntry, Env } from './adapters/registry.js';
+export { ADAPTERS, FeedAdapters, FeedSetupError } from './adapters/registry.js';

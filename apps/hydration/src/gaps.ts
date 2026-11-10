@@ -1,6 +1,7 @@
 // `pnpm gaps`: find minutes missing from raw within market hours, ask the
 // provider which it has, store those as write-once fills, and re-cook the
-// months that changed (M1-09). Composition only.
+// months that changed (M1-09). Composition only. Each day is checked against
+// the provider the feed plan names for it (config/feeds.json, CLAUDE.md rule 7).
 //
 //   pnpm gaps                                  every symbol, the last 7 settled days
 //   pnpm gaps --from 2024-11-01                everything stored
@@ -12,11 +13,12 @@
 
 import { parseArgs } from 'node:util';
 
+import { FeedPlanError, FeedSetupError, feedsFor, historySegments, historyStart } from '@aia/hydration';
 import { PARITY_INSTRUMENTS, parityInstrument } from '@aia/market-data';
 import type { Instrument } from '@aia/shared-kernel';
 import { addDays, barTime, nyseCalendar } from '@aia/shared-kernel';
 
-import { DEFAULT_FROM, ProviderSetupError, SETTLE_SECONDS, providers, startFor } from './providers.js';
+import { feedAdapters, loadFeedPlan } from './feeds.js';
 import { repairAndRecook } from './repair-and-recook.js';
 import { localStores } from './stores.js';
 
@@ -52,59 +54,70 @@ function parse(): { instruments: Instrument[]; from: string | undefined; until: 
 
 async function main(): Promise<void> {
   const { instruments, from, until, dryRun } = parse();
-  const stores = localStores(instruments);
+  let plan;
+  let adapters;
+  try {
+    plan = loadFeedPlan();
+    adapters = feedAdapters(plan, instruments.map((i) => i.symbol));
+  } catch (error) {
+    if (error instanceof FeedPlanError || error instanceof FeedSetupError) usage(error.message);
+    throw error;
+  }
+  const stores = localStores(plan);
   const calendar = nyseCalendar();
-  const provider = providers();
   const now = barTime(Math.floor(Date.now() / 1000));
   const today = new Date().toISOString().slice(0, 10);
   let clean = true;
 
   for (const instrument of instruments) {
-    // Default: the last 7 days, but never before the provider's history.
+    // Default: the last 7 days, but never before the plan's default start.
+    const feeds = feedsFor(plan, instrument.symbol);
     const lastWeek = addDays(today, -9);
-    const earliest = DEFAULT_FROM[instrument.kind];
-    const { start, moved } = startFor(instrument, from ?? (lastWeek > earliest ? lastWeek : earliest));
+    const { start, moved } = historyStart(feeds, from ?? (lastWeek > feeds.defaultFrom ? lastWeek : feeds.defaultFrom));
     console.log(`${instrument.symbol}: scanning ${start} to ${until ?? 'the last settled day'}${dryRun ? ' (dry run)' : ''}`);
-    if (moved) console.log(`  (start moved to ${start}: the Massive plan serves nothing earlier)`);
+    if (moved) console.log(`  (start moved to ${start}: no provider in the feed plan serves earlier days)`);
 
-    let source;
-    try {
-      source = provider(instrument);
-    } catch (error) {
-      if (error instanceof ProviderSetupError) usage(error.message);
-      throw error;
-    }
-    const { report, recooked } = await repairAndRecook(
-      { provider: source, raw: stores.raw, calendar, dryRun, minutes: stores.minutes, cooked: stores.cooked },
-      instrument,
-      { from: start, until, now, settleSeconds: SETTLE_SECONDS[instrument.kind] },
-    );
+    // One repair per provider when the range spans a switch in the feed plan.
+    for (const segment of historySegments(feeds, start, until)) {
+      const { report, recooked } = await repairAndRecook(
+        {
+          provider: adapters.historyProvider(segment.source.provider),
+          raw: stores.raw,
+          calendar,
+          dryRun,
+          minutes: stores.minutes,
+          cooked: stores.cooked,
+        },
+        instrument,
+        { from: segment.from, until: segment.until, now, settleSeconds: segment.source.settleSeconds },
+      );
 
-    const sum = (key: 'holes' | 'filled' | 'confirmedEmpty' | 'differing'): number =>
-      report.days.reduce((total, day) => total + day[key], 0);
-    const failed = report.days.filter((day) => day.error !== undefined);
-    console.log(
-      `  ${report.scanned} days scanned (market hours), ${report.backfill.stored} missing days fetched, ` +
-        `${report.days.length} days with holes: ${sum('holes')} minutes missing, ${sum('filled')} filled ` +
-        `from ${report.provider}, ${sum('confirmedEmpty')} confirmed empty (no trades)` +
-        (sum('differing') > 0 ? `; ${sum('differing')} stored minutes now differ at the provider (not changed)` : ''),
-    );
-    for (const day of report.days.filter((d) => d.filled > 0)) {
-      console.log(`    ${day.date}: filled ${day.filled} of ${day.holes} missing minutes`);
+      const sum = (key: 'holes' | 'filled' | 'confirmedEmpty' | 'differing'): number =>
+        report.days.reduce((total, day) => total + day[key], 0);
+      const failed = report.days.filter((day) => day.error !== undefined);
+      console.log(
+        `  ${report.scanned} days scanned (market hours), ${report.backfill.stored} missing days fetched, ` +
+          `${report.days.length} days with holes: ${sum('holes')} minutes missing, ${sum('filled')} filled ` +
+          `from ${report.provider}, ${sum('confirmedEmpty')} confirmed empty (no trades)` +
+          (sum('differing') > 0 ? `; ${sum('differing')} stored minutes now differ at the provider (not changed)` : ''),
+      );
+      for (const day of report.days.filter((d) => d.filled > 0)) {
+        console.log(`    ${day.date}: filled ${day.filled} of ${day.holes} missing minutes`);
+      }
+      const longest = report.days
+        .filter((d) => d.confirmedEmpty >= 30)
+        .map((d) => `${d.date} (${d.confirmedEmpty} min)`);
+      if (longest.length > 0) console.log(`    long no-trade stretches confirmed: ${longest.join(', ')}`);
+      for (const day of failed) console.log(`    ${day.date} FAILED: ${day.error}`);
+      if (report.backfill.failed.length > 0 || report.backfill.aborted) {
+        console.log(`    missing-day backfill failures: ${report.backfill.failed.map((f) => f.date).join(', ')}`);
+      }
+      if (recooked.length > 0) console.log(`  re-cooked ${recooked.join(', ')}`);
+      else if (instrument.kind === 'stock' && report.monthsTouched.length > 0) {
+        console.log(`  raw changed in ${report.monthsTouched.join(', ')}; stock re-cooking is M1-08`);
+      }
+      if (failed.length > 0 || report.backfill.failed.length > 0 || report.backfill.aborted) clean = false;
     }
-    const longest = report.days
-      .filter((d) => d.confirmedEmpty >= 30)
-      .map((d) => `${d.date} (${d.confirmedEmpty} min)`);
-    if (longest.length > 0) console.log(`    long no-trade stretches confirmed: ${longest.join(', ')}`);
-    for (const day of failed) console.log(`    ${day.date} FAILED: ${day.error}`);
-    if (report.backfill.failed.length > 0 || report.backfill.aborted) {
-      console.log(`    missing-day backfill failures: ${report.backfill.failed.map((f) => f.date).join(', ')}`);
-    }
-    if (recooked.length > 0) console.log(`  re-cooked ${recooked.join(', ')}`);
-    else if (instrument.kind === 'stock' && report.monthsTouched.length > 0) {
-      console.log(`  raw changed in ${report.monthsTouched.join(', ')}; stock re-cooking is M1-08`);
-    }
-    if (failed.length > 0 || report.backfill.failed.length > 0 || report.backfill.aborted) clean = false;
     console.log('');
   }
   process.exit(clean ? 0 : 1);

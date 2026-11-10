@@ -16,6 +16,7 @@ import { CRYPTO_PARITY_INSTRUMENTS, CookIntraday, parityInstrument } from '@aia/
 import type { Instrument } from '@aia/shared-kernel';
 import { nyseCalendar } from '@aia/shared-kernel';
 
+import { loadFeedPlan } from './feeds.js';
 import { localStores, monthsBetween } from './stores.js';
 
 const DEFAULT_FROM = '2024-11-01';
@@ -53,7 +54,7 @@ function parse(): { instruments: Instrument[]; from: string; until: string } {
 
 async function main(): Promise<void> {
   const { instruments, from, until } = parse();
-  const stores = localStores(instruments);
+  const stores = localStores(loadFeedPlan());
   const cook = new CookIntraday({ source: stores.minutes, store: stores.cooked, calendar: nyseCalendar() });
   const months = monthsBetween(from, until);
 
