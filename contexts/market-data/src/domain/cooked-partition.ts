@@ -2,7 +2,7 @@
 // Pure: imports only @aia/shared-kernel, no I/O, no clock.
 
 import type { BarTime, Timeframe } from '@aia/shared-kernel';
-import { isIntraday, zonedParts } from '@aia/shared-kernel';
+import { barTime, barTimeFromUtcParts, isIntraday, zonedParts } from '@aia/shared-kernel';
 
 export class CookedPartitionError extends Error {}
 
@@ -96,4 +96,26 @@ export function partitionsBetween(
     }
   }
   return partitions;
+}
+
+/**
+ * The time span a partition covers, both ends inclusive: a UTC month
+ * (`2024-11`) for intraday timeframes, a UTC year (`2024`) for calendar ones.
+ */
+export function partitionBounds(partition: string): { from: BarTime; until: BarTime } {
+  const month = /^(\d{4})-(\d{2})$/.exec(partition);
+  if (month !== null) {
+    const year = Number(month[1]);
+    const m = Number(month[2]);
+    if (m < 1 || m > 12) throw new CookedPartitionError(`Not a partition: ${partition}`);
+    const from = barTimeFromUtcParts(year, m, 1);
+    const next = m === 12 ? barTimeFromUtcParts(year + 1, 1, 1) : barTimeFromUtcParts(year, m + 1, 1);
+    return { from, until: barTime(next - 1) };
+  }
+  const year = /^(\d{4})$/.exec(partition);
+  if (year !== null) {
+    const y = Number(year[1]);
+    return { from: barTimeFromUtcParts(y, 1, 1), until: barTime(barTimeFromUtcParts(y + 1, 1, 1) - 1) };
+  }
+  throw new CookedPartitionError(`Not a partition: ${partition}`);
 }

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   CookedPartitionError,
+  partitionBounds,
   partitionOf,
   partitionsBetween,
   storageToken,
@@ -116,5 +117,27 @@ describe('partitionsBetween', () => {
     expect(() =>
       partitionsBetween('1m', barTimeFromUtcParts(2024, 3, 1), barTimeFromUtcParts(2024, 1, 1)),
     ).toThrow(CookedPartitionError);
+  });
+});
+
+describe('partitionBounds', () => {
+  it('spans a UTC month, inclusive, across a year end', () => {
+    expect(partitionBounds('2024-12')).toEqual({
+      from: barTimeFromUtcParts(2024, 12, 1),
+      until: barTimeFromUtcParts(2025, 1, 1) - 1,
+    });
+    expect(partitionBounds('2024-02').until).toBe(barTimeFromUtcParts(2024, 3, 1) - 1);
+  });
+
+  it('spans a UTC year for calendar partitions', () => {
+    expect(partitionBounds('2024')).toEqual({
+      from: barTimeFromUtcParts(2024, 1, 1),
+      until: barTimeFromUtcParts(2025, 1, 1) - 1,
+    });
+  });
+
+  it('refuses anything else', () => {
+    expect(() => partitionBounds('2024-13')).toThrow(CookedPartitionError);
+    expect(() => partitionBounds('24-01')).toThrow(CookedPartitionError);
   });
 });

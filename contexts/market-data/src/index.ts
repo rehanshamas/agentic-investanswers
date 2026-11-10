@@ -38,6 +38,7 @@ export {
 
 export {
   CookedPartitionError,
+  partitionBounds,
   partitionOf,
   partitionsBetween,
   storageToken,
@@ -69,3 +70,10 @@ export {
   TSLA,
   parityInstrument,
 } from './domain/parity-instruments.js';
+
+export type { RebuildDiff } from './domain/rebuild-diff.js';
+export { RebuildDiffError, diffBars, differences } from './domain/rebuild-diff.js';
+export type { PartitionResult, RebuildCheckDeps } from './application/rebuild-check.js';
+export { RebuildCheck } from './application/rebuild-check.js';
+export { formatRebuildReport, rebuildPassed, totalDifferences } from './adapters/rebuild-report.js';
+export type { DifferenceLabels } from './adapters/parity-report.js';

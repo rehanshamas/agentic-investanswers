@@ -12,7 +12,7 @@ import type {
 } from '@aia/shared-kernel';
 import { barTime, isIntraday, timeframeSeconds } from '@aia/shared-kernel';
 
-import { partitionOf } from '../domain/cooked-partition.js';
+import { partitionBounds, partitionOf } from '../domain/cooked-partition.js';
 import { affectedBarTimes, rollUp } from '../domain/roll-up.js';
 import type { CookedBarStorePort } from './cooked-bar-store-port.js';
 import type { OneMinuteBarSourcePort } from './one-minute-bar-source-port.js';
@@ -129,6 +129,24 @@ export class CookIntraday {
       const merged = [...kept, ...fresh].sort((a, b) => a.time - b.time);
       await this.deps.store.put(symbol, timeframe, merged);
     }
+  }
+
+  /**
+   * Cook one whole month partition of every intraday timeframe, reading its
+   * raw minutes once. The partition is rebuilt entirely from raw, so what was
+   * stored for it is replaced. This is what `pnpm cook` runs, month by month.
+   * Returns the bars written per timeframe.
+   */
+  async cookPartition(instrument: Instrument, partition: string): Promise<Map<Timeframe, number>> {
+    const { from, until } = partitionBounds(partition);
+    const minutes = await this.deps.source.read(instrument.symbol, from, until);
+    const written = new Map<Timeframe, number>();
+    for (const timeframe of INTRADAY_ROLLUPS) {
+      const bars = rollUp(instrument, timeframe, minutes, this.deps.calendar);
+      await this.writeMerged(instrument.symbol, timeframe, bars, (time) => time >= from && time <= until);
+      written.set(timeframe, bars.length);
+    }
+    return written;
   }
 
   /** Apply new minutes to every intraday timeframe, shortest first. */
