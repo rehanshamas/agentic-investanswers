@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 
 import type { Env, FeedPlan } from '@aia/hydration';
-import { FeedAdapters, FeedSetupError, feedsFor, historySourceOn, parseFeedPlan } from '@aia/hydration';
+import { FeedAdapters, FeedSetupError, feedsFor, historySourceOn, liveSourceOn, parseFeedPlan } from '@aia/hydration';
 
 import type { ProviderOf } from './raw-minute-source.js';
 
@@ -44,4 +44,9 @@ export function feedAdapters(plan: FeedPlan, symbols: readonly string[], env: En
 /** Which provider's raw files hold an instrument's bars for a day, per the plan. */
 export function rawProviderOf(plan: FeedPlan): ProviderOf {
   return (symbol, date) => historySourceOn(feedsFor(plan, symbol), date)?.provider;
+}
+
+/** Which provider's live minutes stand in for a day not yet backfilled, per the plan. */
+export function liveProviderOf(plan: FeedPlan): ProviderOf {
+  return (symbol, date) => liveSourceOn(feedsFor(plan, symbol), date)?.provider;
 }

@@ -79,4 +79,21 @@ describe('FeedAdapters', () => {
     const adapters = new FeedAdapters({ MASSIVE_API_KEY: 'test' });
     for (const name of Object.keys(ADAPTERS)) expect(adapters.historyProvider(name).name).toBe(name);
   });
+
+  it('reports a live source whose provider serves no live feed', () => {
+    const live = parseFeedPlan({
+      instruments: [
+        { symbol: 'AAA', defaultFrom: '2024-01-01', history: [{ provider: 'free', settleSeconds: 0 }], live: [{ provider: 'free' }] },
+      ],
+    });
+    expect(new FeedAdapters({}, registry).problems(live)).toEqual(['AAA: "free" does not serve live']);
+    expect(() => new FeedAdapters({}, registry).liveFeed('free')).toThrow(/does not serve live/);
+  });
+
+  it('registers the real live adapters under the names they file raw minutes under', () => {
+    const adapters = new FeedAdapters({ MASSIVE_API_KEY: 'test' });
+    for (const [name, entry] of Object.entries(ADAPTERS)) {
+      if (entry.live !== undefined) expect(adapters.liveFeed(name).name).toBe(name);
+    }
+  });
 });

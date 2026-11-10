@@ -8,8 +8,10 @@
 // startup rather than mid-run.
 
 import type { HistoryProviderPort } from '../application/history-provider-port.js';
+import type { LiveFeedOptions, LiveTradesPort } from '../application/live-trades-port.js';
 import type { FeedPlan } from '../domain/feed-plan.js';
 import { CoinbaseCandles } from './coinbase/coinbase-candles.js';
+import { CoinbaseTrades } from './coinbase/coinbase-trades.js';
 import { MassiveAggregates } from './massive/massive-aggregates.js';
 
 export class FeedSetupError extends Error {}
@@ -20,11 +22,16 @@ export interface AdapterEntry {
   /** Environment variables the adapter needs, for example an API key. */
   readonly env: readonly string[];
   readonly history?: (env: Env) => HistoryProviderPort;
+  readonly live?: (env: Env, options: LiveFeedOptions) => LiveTradesPort;
 }
 
 export const ADAPTERS: Readonly<Record<string, AdapterEntry>> = {
-  // Coinbase Exchange public API: free, keyless (M1-04).
-  coinbase: { env: [], history: () => new CoinbaseCandles() },
+  // Coinbase Exchange public API and feed: free, keyless (M1-04, M1-05).
+  coinbase: {
+    env: [],
+    history: () => new CoinbaseCandles(),
+    live: (_env, options) => new CoinbaseTrades(options),
+  },
   // Massive aggregates for US stocks (M1-07).
   massive: {
     env: ['MASSIVE_API_KEY'],
@@ -61,8 +68,11 @@ export class FeedAdapters {
           for (const key of this.missingEnv(entry)) found.add(`${source.provider} needs ${key} (put it in .env)`);
       }
       for (const source of feeds.live) {
-        if (this.registry[source.provider] === undefined)
-          found.add(`${feeds.symbol}: unknown live provider "${source.provider}"`);
+        const entry = this.registry[source.provider];
+        if (entry === undefined) found.add(`${feeds.symbol}: unknown live provider "${source.provider}"`);
+        else if (entry.live === undefined) found.add(`${feeds.symbol}: "${source.provider}" does not serve live`);
+        else if (used)
+          for (const key of this.missingEnv(entry)) found.add(`${source.provider} needs ${key} (put it in .env)`);
       }
     }
     return [...found];
@@ -81,6 +91,17 @@ export class FeedAdapters {
       throw new FeedSetupError(`Adapter registered as "${provider}" calls itself "${adapter.name}"`);
     }
     this.history.set(provider, adapter);
+    return adapter;
+  }
+
+  /** A new live adapter registered as `provider`; one per stream, since options differ. */
+  liveFeed(provider: string, options: LiveFeedOptions = {}): LiveTradesPort {
+    const entry = this.entry(provider);
+    if (entry.live === undefined) throw new FeedSetupError(`"${provider}" does not serve live`);
+    const adapter = entry.live(this.env, options);
+    if (adapter.name !== provider) {
+      throw new FeedSetupError(`Adapter registered as "${provider}" calls itself "${adapter.name}"`);
+    }
     return adapter;
   }
 

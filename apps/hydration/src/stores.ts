@@ -8,7 +8,7 @@ import type { FeedPlan } from '@aia/hydration';
 import { S3RawBarStore } from '@aia/hydration';
 import { S3CookedBarStore } from '@aia/market-data';
 
-import { rawProviderOf } from './feeds.js';
+import { liveProviderOf, rawProviderOf } from './feeds.js';
 import { RawMinuteSource } from './raw-minute-source.js';
 
 export interface Stores {
@@ -35,7 +35,7 @@ export function localStores(
   };
   const raw = new S3RawBarStore({ ...s3, bucket: env['AIA_RAW_BUCKET'] ?? 'aia-raw' });
   const cooked = new S3CookedBarStore({ ...s3, bucket: env['AIA_COOKED_BUCKET'] ?? 'aia-cooked' });
-  const minutes = new RawMinuteSource(raw, rawProviderOf(plan));
+  const minutes = new RawMinuteSource(raw, rawProviderOf(plan), liveProviderOf(plan));
   return { endpoint, raw, cooked, minutes };
 }
 

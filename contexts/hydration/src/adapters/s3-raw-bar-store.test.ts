@@ -13,7 +13,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { RawDayAlreadyStoredError } from '../application/raw-bar-store-port.js';
 import type { RawDayRef } from '../application/raw-bar-store-port.js';
 import { RawDayError } from '../domain/raw-day.js';
-import { S3RawBarStore, rawDayKey } from './s3-raw-bar-store.js';
+import { LiveMinuteAlreadyStoredError } from '../application/live-raw-store-port.js';
+import { S3RawBarStore, rawDayKey, rawLiveGapKey, rawLiveMinuteKey } from './s3-raw-bar-store.js';
 import type { S3StoreConfig } from './s3-objects.js';
 import { createS3Client } from './s3-objects.js';
 
@@ -172,5 +173,45 @@ describe.skipIf(!available)('S3RawBarStore gap fills against MinIO', () => {
     await expect(store.putFill(ref('2024-04-03'), [bar(barTimeFromUtcParts(2024, 4, 3, 1, 0), '1.00')])).rejects.toThrow(
       /never stored/,
     );
+  });
+});
+
+describe('live keys (M1-05)', () => {
+  const r: RawDayRef = { provider: 'coinbase', symbol: 'BTCUSD', date: '2026-11-10' };
+  it('puts each live minute and gap record beside its day, never in the day file', () => {
+    expect(rawLiveMinuteKey(r, barTimeFromUtcParts(2026, 11, 10, 9, 5))).toBe('raw/coinbase/BTCUSD/2026/11/10.live/0905.parquet');
+    const gap = { from: barTimeFromUtcParts(2026, 11, 10, 23, 58), until: barTimeFromUtcParts(2026, 11, 11) };
+    expect(rawLiveGapKey(r, gap)).toBe('raw/coinbase/BTCUSD/2026/11/10.live-gaps/2358-2400.json');
+  });
+});
+
+describe.skipIf(!available)('S3RawBarStore live minutes against MinIO', () => {
+  let store: S3RawBarStore;
+  beforeAll(() => {
+    store = new S3RawBarStore(config);
+  });
+  const liveDay = '2024-05-01';
+  const t = (h: number, m: number) => barTimeFromUtcParts(2024, 5, 1, h, m);
+
+  it('stores each minute once and reads the day back ascending, separately from the day file', async () => {
+    await store.putLiveMinute(ref(liveDay), bar(t(10, 1), '2.00'));
+    await store.putLiveMinute(ref(liveDay), bar(t(10, 0), '1.00'));
+    expect((await store.getLiveMinutes(ref(liveDay))).map((b) => b.time)).toEqual([t(10, 0), t(10, 1)]);
+    await expect(store.putLiveMinute(ref(liveDay), bar(t(10, 0), '9.00'))).rejects.toThrow(LiveMinuteAlreadyStoredError);
+    expect((await store.getLiveMinutes(ref(liveDay)))[0]?.close).toBe(price(parseScaled('1.00', 2)));
+    expect(await store.hasDay(ref(liveDay))).toBe(false);
+  });
+
+  it('refuses a minute outside its day', async () => {
+    await expect(store.putLiveMinute(ref(liveDay), bar(barTimeFromUtcParts(2024, 5, 2, 0, 0), '1.00'))).rejects.toThrow(
+      /within 2024-05-01/,
+    );
+  });
+
+  it('records gaps write-once and reads them back', async () => {
+    const gap = { from: t(11, 0), until: t(11, 3) };
+    await store.putLiveGap(ref(liveDay), gap);
+    await store.putLiveGap(ref(liveDay), gap);
+    expect(await store.getLiveGaps(ref(liveDay))).toEqual([gap]);
   });
 });
