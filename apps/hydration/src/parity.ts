@@ -21,13 +21,11 @@
 
 import { parseArgs } from 'node:util';
 
-import { S3RawBarStore } from '@aia/hydration';
 import type { ParityResult } from '@aia/market-data';
 import {
   CRYPTO_PARITY_INSTRUMENTS,
   DEFAULT_FIXTURE_DIR,
   RunParity,
-  S3CookedBarStore,
   TradingViewExportSource,
   buildSource,
   formatFidelityReport,
@@ -38,15 +36,7 @@ import {
 import type { Instrument, Timeframe } from '@aia/shared-kernel';
 import { TIMEFRAMES, isTimeframe, nyseCalendar } from '@aia/shared-kernel';
 
-import { RawMinuteSource } from './raw-minute-source.js';
-
-/**
- * Raw files are keyed by provider. Crypto history is backfilled from
- * Coinbase (M1-04); stocks will come from Massive (M1-07).
- */
-function providerOf(instrument: Instrument): string {
-  return instrument.kind === 'crypto' ? 'coinbase' : 'massive';
-}
+import { localStores } from './stores.js';
 
 const USAGE =
   'Usage: pnpm parity [--build | --fidelity] [--symbol S]... [--timeframe T]... [--fixtures DIR]';
@@ -91,25 +81,7 @@ function parse(): Args {
 }
 
 async function fidelity(args: Args, exports: TradingViewExportSource): Promise<void> {
-  const env = process.env;
-  const endpoint = env['AIA_S3_ENDPOINT'] ?? 'http://127.0.0.1:9000';
-  const s3 = {
-    endpoint,
-    region: env['AIA_S3_REGION'] ?? 'us-east-1',
-    // The local MinIO's credentials from docker-compose.yml, unless overridden.
-    credentials: {
-      accessKeyId: env['AIA_S3_ACCESS_KEY'] ?? 'minio',
-      secretAccessKey: env['AIA_S3_SECRET_KEY'] ?? 'minio12345',
-    },
-  };
-  const raw = new S3RawBarStore({ ...s3, bucket: env['AIA_RAW_BUCKET'] ?? 'aia-raw' });
-  const cooked = new S3CookedBarStore({ ...s3, bucket: env['AIA_COOKED_BUCKET'] ?? 'aia-cooked' });
-  const bySymbol = new Map(args.instruments.map((i) => [i.symbol, i]));
-  const minutes = new RawMinuteSource(raw, (symbol) => {
-    const instrument = bySymbol.get(symbol);
-    if (instrument === undefined) throw new Error(`No instrument for ${symbol}`);
-    return providerOf(instrument);
-  });
+  const { endpoint, cooked, minutes } = localStores(args.instruments);
 
   console.log(`SOURCE FIDELITY (reported only)   stores: ${endpoint}\n`);
   let results: ParityResult[];

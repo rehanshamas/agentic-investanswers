@@ -13,6 +13,8 @@
     "check": "nx affected -t lint test typecheck",
     "parity": "tsx apps/hydration/src/parity.ts",
     "backfill": "tsx apps/hydration/src/backfill.ts",
+    "cook": "tsx apps/hydration/src/cook.ts",
+    "rebuild-check": "tsx apps/hydration/src/rebuild-check.ts",
     "owner-inputs": "node scripts/owner-inputs.mjs",
     "status": "node scripts/status.mjs"
   },

@@ -14,10 +14,12 @@
 import { parseArgs } from 'node:util';
 
 import type { BackfillReport, DayOutcome } from '@aia/hydration';
-import { Backfill, CoinbaseCandles, S3RawBarStore } from '@aia/hydration';
+import { Backfill, CoinbaseCandles } from '@aia/hydration';
 import { CRYPTO_PARITY_INSTRUMENTS, parityInstrument } from '@aia/market-data';
 import type { Instrument } from '@aia/shared-kernel';
 import { barTime } from '@aia/shared-kernel';
+
+import { localStores } from './stores.js';
 
 const DEFAULT_FROM = '2024-11-01';
 
@@ -83,18 +85,7 @@ function summary(report: BackfillReport): string {
 
 async function main(): Promise<void> {
   const { instruments, from, until } = parse();
-  const env = process.env;
-  const endpoint = env['AIA_S3_ENDPOINT'] ?? 'http://127.0.0.1:9000';
-  const raw = new S3RawBarStore({
-    bucket: env['AIA_RAW_BUCKET'] ?? 'aia-raw',
-    endpoint,
-    region: env['AIA_S3_REGION'] ?? 'us-east-1',
-    // The local MinIO's credentials from docker-compose.yml, unless overridden.
-    credentials: {
-      accessKeyId: env['AIA_S3_ACCESS_KEY'] ?? 'minio',
-      secretAccessKey: env['AIA_S3_SECRET_KEY'] ?? 'minio12345',
-    },
-  });
+  const { endpoint, raw } = localStores(instruments);
 
   // Fail fast on an unreachable store, before spending any provider requests.
   try {
