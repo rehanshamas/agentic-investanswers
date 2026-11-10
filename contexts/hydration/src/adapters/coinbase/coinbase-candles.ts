@@ -15,10 +15,19 @@
 //   - a minute with no trades has no row
 
 import type { Bar, BarTime, Instrument } from '@aia/shared-kernel';
-import { assertCoherent, barTime, parseScaled, price, volume } from '@aia/shared-kernel';
+import {
+  assertCoherent,
+  barTime,
+  price,
+  rawPriceScale,
+  rawVolumeScale,
+  volume,
+} from '@aia/shared-kernel';
 
 import type { HistoryProviderPort } from '../../application/history-provider-port.js';
 import { dayStart } from '../../domain/raw-day.js';
+import { PacedJson } from '../paced-json.js';
+import { scaledNumber } from '../provider-numbers.js';
 
 export class CoinbaseError extends Error {}
 
@@ -40,28 +49,10 @@ const MINUTE = 60;
 const DAY_MINUTES = 24 * 60;
 const PAGE_MINUTES = 300;
 
-/**
- * Largest excess beyond the instrument's scale treated as float noise,
- * relative to the value. A float64 holds about 16 significant digits, so
- * noise is near 1e-16 of the value; 1e-12 leaves room for that while still
- * catching a real ninth decimal on a volume near 1, which an absolute 1e-9
- * would let through. Raw is write-once, so anything bigger throws rather
- * than being rounded in.
- */
-const RELATIVE_NOISE = 1e-12;
+const fail = (message: string): Error => new CoinbaseError(message);
 
 function scaled(value: unknown, scale: number, what: string): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new CoinbaseError(`${what} is not a number: ${JSON.stringify(value)}`);
-  }
-  const rounded = value.toFixed(scale);
-  if (Math.abs(value - Number(rounded)) > Math.max(Math.abs(value), 1) * RELATIVE_NOISE) {
-    throw new CoinbaseError(
-      `${what} ${value} needs more than ${scale} decimal places; fix the instrument scale ` +
-        `rather than rounding it into raw`,
-    );
-  }
-  return parseScaled(rounded, scale);
+  return scaledNumber(value, scale, what, fail);
 }
 
 /** Parse one response page into ascending Bars, checking each lies in `[from, until]`. */
@@ -89,11 +80,11 @@ export function parseCandles(
     const what = `${instrument.symbol} ${time}`;
     const bar: Bar = {
       time: barTime(time),
-      open: price(scaled(open, instrument.priceScale, `${what} open`)),
-      high: price(scaled(high, instrument.priceScale, `${what} high`)),
-      low: price(scaled(low, instrument.priceScale, `${what} low`)),
-      close: price(scaled(close, instrument.priceScale, `${what} close`)),
-      volume: volume(scaled(vol, instrument.volumeScale, `${what} volume`)),
+      open: price(scaled(open, rawPriceScale(instrument), `${what} open`)),
+      high: price(scaled(high, rawPriceScale(instrument), `${what} high`)),
+      low: price(scaled(low, rawPriceScale(instrument), `${what} low`)),
+      close: price(scaled(close, rawPriceScale(instrument), `${what} close`)),
+      volume: volume(scaled(vol, rawVolumeScale(instrument), `${what} volume`)),
     };
     assertCoherent(bar);
     bars.push(bar);
@@ -122,9 +113,6 @@ export interface CoinbaseCandlesOptions {
   readonly maxAttempts?: number;
 }
 
-const defaultSleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, ms));
-
 function iso(time: BarTime): string {
   return new Date(time * 1000).toISOString().replace('.000Z', 'Z');
 }
@@ -132,18 +120,17 @@ function iso(time: BarTime): string {
 export class CoinbaseCandles implements HistoryProviderPort {
   readonly name = 'coinbase';
   private readonly baseUrl: string;
-  private readonly fetchFn: typeof fetch;
-  private readonly sleep: (ms: number) => Promise<void>;
-  private readonly minIntervalMs: number;
-  private readonly maxAttempts: number;
-  private lastRequestAt = 0;
+  private readonly http: PacedJson;
 
   constructor(options: CoinbaseCandlesOptions = {}) {
     this.baseUrl = options.baseUrl ?? COINBASE_BASE_URL;
-    this.fetchFn = options.fetch ?? fetch;
-    this.sleep = options.sleep ?? defaultSleep;
-    this.minIntervalMs = options.minIntervalMs ?? 200;
-    this.maxAttempts = options.maxAttempts ?? 6;
+    this.http = new PacedJson({
+      ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+      ...(options.sleep === undefined ? {} : { sleep: options.sleep }),
+      ...(options.maxAttempts === undefined ? {} : { maxAttempts: options.maxAttempts }),
+      minIntervalMs: options.minIntervalMs ?? 200,
+      fail,
+    });
   }
 
   /**
@@ -164,46 +151,13 @@ export class CoinbaseCandles implements HistoryProviderPort {
     return bars;
   }
 
-  private async get(product: string, from: BarTime, until: BarTime): Promise<unknown> {
+  private get(product: string, from: BarTime, until: BarTime): Promise<unknown> {
     const url =
       `${this.baseUrl}/products/${product}/candles?granularity=60` +
       `&start=${iso(from)}&end=${iso(until)}`;
-
-    let lastError = '';
-    for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
-      await this.pace();
-      let response: Response;
-      try {
-        response = await this.fetchFn(url, {
-          headers: { Accept: 'application/json', 'User-Agent': 'agentic-investanswers-backfill' },
-        });
-      } catch (error) {
-        lastError = `network error: ${error instanceof Error ? error.message : String(error)}`;
-        await this.sleep(this.backoffMs(attempt, undefined));
-        continue;
-      }
-      if (response.ok) return response.json() as Promise<unknown>;
-
-      const text = (await response.text()).slice(0, 200);
-      lastError = `HTTP ${response.status}: ${text}`;
-      if (response.status !== 429 && response.status < 500) {
-        throw new CoinbaseError(`${url} failed: ${lastError}`);
-      }
-      await this.sleep(this.backoffMs(attempt, response.headers.get('retry-after')));
-    }
-    throw new CoinbaseError(`${url} failed after ${this.maxAttempts} attempts: ${lastError}`);
-  }
-
-  private async pace(): Promise<void> {
-    const wait = this.lastRequestAt + this.minIntervalMs - Date.now();
-    if (wait > 0) await this.sleep(wait);
-    this.lastRequestAt = Date.now();
-  }
-
-  /** `Retry-After` seconds when given, else 1s, 2s, 4s ... capped at 30s. */
-  private backoffMs(attempt: number, retryAfter: string | null | undefined): number {
-    const seconds = retryAfter === null || retryAfter === undefined ? NaN : Number(retryAfter);
-    if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
-    return Math.min(30_000, 1000 * 2 ** (attempt - 1));
+    return this.http.get(url, {
+      Accept: 'application/json',
+      'User-Agent': 'agentic-investanswers-backfill',
+    });
   }
 }
