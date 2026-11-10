@@ -14,7 +14,8 @@ Every rule here has a matching **export setting** in TradingView: the exports in
 **Watch out: TradingView will hand you Cboe BZX (BATS) data for US stocks, whatever symbol you type.** Primary-exchange feeds are sold separately, so without a Nasdaq data subscription the `NASDAQ:NVDA` chart is fed by Cboe BZX and the export is named `BATS_NVDA`. Cboe carries 25%+ of US volume, so prices are close but **volume is not**, and volume parity would fail on every bar. Two consequences:
 
 - Check the export's filename, not the symbol you searched for.
-- **Which feed we should buy is still open**, because nobody has established what venue Massive serves for `NVDA`. If Massive returns the consolidated tape, a Nasdaq-sourced fixture will not match it either. M1-07 answers this the first time we call Massive; buy the matching TradingView feed then, not before.
+- **Massive serves the consolidated tape (M1-07, 2026-11-10), so the TradingView feed must be consolidated too.** On 2026-11-05 regular hours, Massive's NVDA volume was 257.3M shares against 24.4M on the BATS export (10.6×), with both having all 390 minutes and closes equal in only 40% of them. A BATS or single-exchange (for example Nasdaq-only) export will not match Massive on volume or on most closes. OI-27 tracks buying the consolidated feed and re-exporting.
+- **Massive's raw minutes include pre-market and after-hours (from 04:00 New York), sub-penny prices to 6 places and fractional-share volumes to 6 places.** Raw keeps them as sent and as traded (unadjusted); cooking keeps regular hours, rounds to the export's precision and applies splits (M1-08).
 
 Venue does not affect *bucketing*, so the BATS exports are still valid for proving session, DST and alignment rules — which is what they were used for above.
 

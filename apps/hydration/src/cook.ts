@@ -33,9 +33,13 @@ function parse(): { instruments: Instrument[]; from: string; until: string } {
       until: { type: 'string' },
     },
   });
-  const instruments = (values.symbol ?? []).map(
-    (symbol) => parityInstrument(symbol) ?? usage(`Unknown symbol: ${symbol}`),
-  );
+  const instruments = (values.symbol ?? []).map((symbol) => {
+    const instrument = parityInstrument(symbol) ?? usage(`Unknown symbol: ${symbol}`);
+    // Raw stock bars keep Massive's precision (4-place prices, 6-place
+    // volumes); turning them into whole-cent, whole-share bars is M1-08.
+    if (instrument.kind === 'stock') usage(`${symbol} is a stock; cooking stocks is M1-08`);
+    return instrument;
+  });
   const date = /^\d{4}-\d{2}-\d{2}$/;
   const from = values.from ?? DEFAULT_FROM;
   const until = values.until ?? new Date().toISOString().slice(0, 10);

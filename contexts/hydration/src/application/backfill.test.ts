@@ -168,3 +168,54 @@ describe('Backfill', () => {
     ]);
   });
 });
+
+describe('Backfill with a provider that fetches many days per request', () => {
+  class BatchProvider extends FakeProvider {
+    readonly daysPerRequest = 2;
+    readonly batches: string[][] = [];
+    failBatchContaining: string | undefined;
+
+    fetchDays(instrument: Instrument, dates: readonly string[]): Promise<Map<string, Bar[]>> {
+      this.batches.push([...dates]);
+      if (this.failBatchContaining !== undefined && dates.includes(this.failBatchContaining)) {
+        return Promise.reject(new Error('page failed'));
+      }
+      return Promise.resolve(new Map(dates.map((d) => [d, this.emptyOn.has(d) ? [] : minutesOf(d)])));
+    }
+  }
+
+  let batch: BatchProvider;
+  beforeEach(() => {
+    batch = new BatchProvider();
+  });
+
+  it('asks for the missing days in batches, and reports days in date order', async () => {
+    raw.days.set('fake/BTCUSD/2026-01-02', minutesOf('2026-01-02'));
+    const report = await new Backfill({ provider: batch, raw, onDay: (_i, o) => outcomes.push(o) }).run(BTC, RANGE);
+    expect(batch.batches).toEqual([['2026-01-01', '2026-01-03'], ['2026-01-04', '2026-01-05']]);
+    expect(batch.fetched).toEqual([]);
+    expect(outcomes.map((o) => `${o.date} ${o.kind}`)).toEqual([
+      '2026-01-01 stored', '2026-01-02 skipped', '2026-01-03 stored', '2026-01-04 stored', '2026-01-05 stored',
+    ]);
+    expect(report).toMatchObject({ stored: 4, skipped: 1 });
+  });
+
+  it('fails every day of a batch that fails, and a re-run stores just those', async () => {
+    batch.failBatchContaining = '2026-01-03';
+    const first = await new Backfill({ provider: batch, raw }).run(BTC, RANGE);
+    expect(first.failed.map((f) => f.date)).toEqual(['2026-01-03', '2026-01-04']);
+    expect(first.stored).toBe(3);
+
+    batch.failBatchContaining = undefined;
+    const second = await new Backfill({ provider: batch, raw }).run(BTC, RANGE);
+    expect(second).toMatchObject({ stored: 2, skipped: 3 });
+    const third = await new Backfill({ provider: batch, raw }).run(BTC, RANGE);
+    expect(third).toMatchObject({ stored: 0, skipped: 5 });
+  });
+
+  it('leaves a day the batch returns empty for a later run', async () => {
+    batch.emptyOn.add('2026-01-04');
+    const report = await new Backfill({ provider: batch, raw }).run(BTC, RANGE);
+    expect(report).toMatchObject({ stored: 4, empty: 1 });
+  });
+});

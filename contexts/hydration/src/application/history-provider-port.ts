@@ -18,4 +18,15 @@ export interface HistoryProviderPort {
    * partial day must never reach the write-once raw store.
    */
   fetchDay(instrument: Instrument, date: string): Promise<Bar[]>;
+
+  /**
+   * Optional: several UTC days in one request, for providers whose rate limit
+   * makes one request per day too slow (Massive: about 5 a minute). Returns
+   * each requested date's bars, ascending; a date with no bars maps to `[]`.
+   * Throws if any of them cannot be fetched completely, failing them all.
+   */
+  fetchDays?(instrument: Instrument, dates: readonly string[]): Promise<Map<string, Bar[]>>;
+
+  /** How many dates `fetchDays` takes at once. */
+  readonly daysPerRequest?: number;
 }

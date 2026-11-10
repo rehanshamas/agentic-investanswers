@@ -1,34 +1,51 @@
-// `pnpm backfill`: fetch crypto 1-minute history into the raw store.
+// `pnpm backfill`: fetch 1-minute history into the raw store.
 //
-// Composition only: the Backfill use case and the Coinbase adapter live in
-// @aia/hydration. History comes from Coinbase's public candles API, not
-// CoinAPI (M1-04, Sham 2026-11-09; see tasks/M1-04.md).
+// Composition only: the Backfill use case and the adapters live in
+// @aia/hydration. Crypto comes from Coinbase's public candles API (M1-04),
+// stocks from Massive's aggregates (M1-07), which needs MASSIVE_API_KEY.
 //
 //   pnpm backfill                                  BTCUSD and ETHUSD from 2024-11-01
+//   pnpm backfill --symbol NVDA --symbol TSLA      stocks from 2024-11-11
 //   pnpm backfill --symbol ETHUSD --from 2022-01-01 --until 2022-12-31
 //
 // Safe to stop and re-run at any time: days already stored are skipped.
 // Exits 0 when every planned day is stored or skipped, 1 when some failed or
-// came back empty, and 2 on a setup error.
+// a trading day came back empty, and 2 on a setup error. A stock's weekends
+// and holidays are empty by nature and do not count against the run.
 
 import { parseArgs } from 'node:util';
 
 import type { BackfillReport, DayOutcome } from '@aia/hydration';
-import { Backfill, CoinbaseCandles } from '@aia/hydration';
+import type { HistoryProviderPort } from '@aia/hydration';
+import { Backfill, CoinbaseCandles, MassiveAggregates } from '@aia/hydration';
 import { CRYPTO_PARITY_INSTRUMENTS, parityInstrument } from '@aia/market-data';
 import type { Instrument } from '@aia/shared-kernel';
-import { barTime } from '@aia/shared-kernel';
+import { barTime, isTradingDay, nyseCalendar } from '@aia/shared-kernel';
 
 import { localStores } from './stores.js';
 
-const DEFAULT_FROM = '2024-11-01';
+/**
+ * The earliest day the current Massive plan serves: history is a rolling two
+ * years (measured 2026-11-10; 2024-11-08 and before answered 403).
+ */
+const MASSIVE_EARLIEST = '2024-11-11';
+
+const DEFAULT_FROM = { crypto: '2024-11-01', stock: MASSIVE_EARLIEST };
+
+/**
+ * How long a day must have ended before it is stored. Raw is write-once, so a
+ * day must be final first. Crypto: 1 hour. Stocks: 2 days (Sham, M1-07),
+ * because Massive's newest day can still change: on 2026-11-10 only the
+ * previous day carried 6-decimal prints, a sign of corrections still to come.
+ */
+const SETTLE_SECONDS = { crypto: 60 * 60, stock: 2 * 24 * 60 * 60 };
 
 function usage(message: string): never {
   console.error(`${message}\nUsage: pnpm backfill [--symbol S]... [--from YYYY-MM-DD] [--until YYYY-MM-DD]`);
   process.exit(2);
 }
 
-function parse(): { instruments: Instrument[]; from: string; until: string | undefined } {
+function parse(): { instruments: Instrument[]; from: string | undefined; until: string | undefined } {
   const { values } = parseArgs({
     options: {
       symbol: { type: 'string', multiple: true },
@@ -37,13 +54,11 @@ function parse(): { instruments: Instrument[]; from: string; until: string | und
     },
   });
   const instruments = (values.symbol ?? []).map((symbol) => {
-    const instrument = parityInstrument(symbol) ?? usage(`Unknown symbol: ${symbol}`);
-    if (instrument.kind !== 'crypto') usage(`${symbol} is a stock; stock history is M1-07`);
-    return instrument;
+    return parityInstrument(symbol) ?? usage(`Unknown symbol: ${symbol}`);
   });
   return {
     instruments: instruments.length > 0 ? instruments : [...CRYPTO_PARITY_INSTRUMENTS],
-    from: values.from ?? DEFAULT_FROM,
+    from: values.from,
     until: values.until,
   };
 }
@@ -74,6 +89,14 @@ class MonthlyProgress {
   }
 }
 
+const nyse = nyseCalendar();
+
+/** Empty days that count against the run: for a stock, only trading days. */
+function unexpectedEmpties(instrument: Instrument, emptyDates: readonly string[]): string[] {
+  if (instrument.kind === 'crypto') return [...emptyDates];
+  return emptyDates.filter((date) => isTradingDay(nyse, date));
+}
+
 function summary(report: BackfillReport): string {
   return (
     `${report.symbol} from ${report.provider}: ${report.planned} days planned, ` +
@@ -89,7 +112,7 @@ async function main(): Promise<void> {
 
   // Fail fast on an unreachable store, before spending any provider requests.
   try {
-    await raw.hasDay({ provider: 'coinbase', symbol: 'BTCUSD', date: from });
+    await raw.hasDay({ provider: 'coinbase', symbol: 'BTCUSD', date: '2024-11-01' });
   } catch (error) {
     console.error(
       `Could not reach the raw store at ${endpoint}: ${String(error)}\n` +
@@ -98,25 +121,51 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  const progress = new MonthlyProgress();
-  const backfill = new Backfill({
-    provider: new CoinbaseCandles(),
-    raw,
-    onDay: (instrument, outcome) => progress.day(instrument, outcome),
-  });
-  const now = barTime(Math.floor(Date.now() / 1000));
+  let massive: MassiveAggregates | undefined;
+  const providerFor = (instrument: Instrument): HistoryProviderPort => {
+    if (instrument.kind === 'crypto') return new CoinbaseCandles();
+    const apiKey = process.env['MASSIVE_API_KEY'] ?? '';
+    if (apiKey === '') usage('MASSIVE_API_KEY is not set (put it in .env).');
+    massive ??= new MassiveAggregates({ apiKey });
+    return massive;
+  };
 
-  const reports: BackfillReport[] = [];
+  const progress = new MonthlyProgress();
+  const now = barTime(Math.floor(Date.now() / 1000));
+  const reports: Array<{ report: BackfillReport; unexpected: string[] }> = [];
   for (const instrument of instruments) {
-    console.log(`Backfilling ${instrument.symbol} 1m from ${from}${until ? ` to ${until}` : ''} into ${endpoint}`);
-    const report = await backfill.run(instrument, { from, until, now });
+    const start = from ?? DEFAULT_FROM[instrument.kind];
+    const empties: string[] = [];
+    const backfill = new Backfill({
+      provider: providerFor(instrument),
+      raw,
+      onDay: (i, outcome) => {
+        if (outcome.kind === 'empty') empties.push(outcome.date);
+        progress.day(i, outcome);
+      },
+    });
+    console.log(`Backfilling ${instrument.symbol} 1m from ${start}${until ? ` to ${until}` : ''} into ${endpoint}`);
+    const report = await backfill.run(instrument, {
+      from: start,
+      until,
+      now,
+      settleSeconds: SETTLE_SECONDS[instrument.kind],
+    });
     progress.flush(instrument);
-    reports.push(report);
+    reports.push({ report, unexpected: unexpectedEmpties(instrument, empties) });
   }
 
   console.log('');
-  for (const report of reports) console.log(summary(report));
-  const clean = reports.every((r) => r.failed.length === 0 && r.empty === 0 && !r.aborted);
+  for (const { report, unexpected } of reports) {
+    console.log(summary(report));
+    if (report.empty > 0 && unexpected.length < report.empty) {
+      console.log(`  (${report.empty - unexpected.length} empty days are weekends or market holidays)`);
+    }
+    if (unexpected.length > 0) console.log(`  empty trading days: ${unexpected.join(', ')}`);
+  }
+  const clean = reports.every(
+    ({ report, unexpected }) => report.failed.length === 0 && unexpected.length === 0 && !report.aborted,
+  );
   process.exit(clean ? 0 : 1);
 }
 

@@ -31,3 +31,12 @@ export {
   coinbaseProduct,
   parseCandles,
 } from './adapters/coinbase/coinbase-candles.js';
+
+export type { MassiveAggregatesOptions } from './adapters/massive/massive-aggregates.js';
+export {
+  MASSIVE_BASE_URL,
+  MASSIVE_DAYS_PER_REQUEST,
+  MassiveAggregates,
+  MassiveError,
+  parseAggregates,
+} from './adapters/massive/massive-aggregates.js';

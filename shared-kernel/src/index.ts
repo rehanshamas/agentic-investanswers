@@ -27,7 +27,7 @@ export {
 } from './timeframe.js';
 
 export type { Instrument, MarketKind } from './instrument.js';
-export { hasSessions, isCrypto, tickSize } from './instrument.js';
+export { hasSessions, isCrypto, rawPriceScale, rawVolumeScale, tickSize } from './instrument.js';
 
 export type { Price, Volume } from './scaled.js';
 export {

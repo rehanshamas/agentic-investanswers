@@ -23,6 +23,31 @@ export interface Instrument {
   readonly priceScale: number;
   /** Decimal places in a volume: 8 for crypto base units, 0 for whole shares. */
   readonly volumeScale: number;
+  /**
+   * Decimal places the *raw* store keeps prices at, when the provider sends
+   * more than `priceScale`. Raw is the provider's record exactly as received
+   * (CLAUDE.md rule 3), so it is not rounded to the export's precision; cooking
+   * converts. Massive prints sub-penny stock prices to as many as 6 places
+   * (for example 174.617297), so US stocks use 6. Defaults to `priceScale`.
+   */
+  readonly rawPriceScale?: number;
+  /**
+   * Decimal places the raw store keeps volumes at, for the same reason.
+   * Massive reports fractional shares to 6 places. Defaults to `volumeScale`.
+   * Kept separate from `volumeScale` because a month of stock volume at 6
+   * places would leave the exact-integer range; a day does not.
+   */
+  readonly rawVolumeScale?: number;
+}
+
+/** The price scale raw bars are stored at (decided in M1-07). */
+export function rawPriceScale(instrument: Instrument): number {
+  return instrument.rawPriceScale ?? instrument.priceScale;
+}
+
+/** The volume scale raw bars are stored at (decided in M1-07). */
+export function rawVolumeScale(instrument: Instrument): number {
+  return instrument.rawVolumeScale ?? instrument.volumeScale;
 }
 
 export function isCrypto(instrument: Instrument): boolean {

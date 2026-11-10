@@ -23,6 +23,7 @@ To start a task, ask Claude: "Start task M1-06". It copies the template into `ta
 | M1-05 | CoinAPI live stream: forming bar in memory, closed 1m to raw store, reconnect with backoff, gap marked on disconnect | B | M1-01 | Replay of a recorded stream gives the same bars as the fixture; a reconnect test |
 | M1-06 | Cook intraday rollups 1m → 5m/15m/1h/4h, incrementally (one new 1m updates only the affected bars) | C | M1-01 | `pnpm parity` build parity green for BTC/ETH intraday (source fidelity reported) |
 | M1-07 | Massive (stocks) backfill and live stream for 2 symbols, same ports as crypto | B | M1-01 | Replay test; history stored |
+| M1-07b | Massive live stream for NVDA/TSLA: forming bar in memory, closed 1m to raw at day close (raw is write-once per day), reconnect with backoff, gap marked on disconnect. Split from M1-07 (Sham, 2026-11-10): the current plan has no WebSocket | B | M1-07, OI-28 | Replay of a recorded stream gives the same bars as the REST history; a reconnect test |
 | M1-08 | Cook D/W/M and stock session-aware rollups (regular hours, holidays) | C | M1-06, M0-03 | `pnpm parity` build parity green for all 4 symbols on all timeframes (stocks D/W can spill into Week 2); source fidelity reported |
 | M1-09 | Gap detector + auto re-fetch (completeness check), per market hours | A | M1-04, M1-07 | Test deletes minutes; they are found, re-fetched and re-cooked |
 | M1-10 | Rebuild check: re-cook every timeframe from raw and diff against stored cooked bars | A | M1-06 | `pnpm rebuild-check` reports 0 differences |
