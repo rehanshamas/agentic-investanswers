@@ -21,7 +21,7 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M1-09 | Gap detector + auto re-fetch (completeness check), per market hours | todo | #15 |  |
 | M1-10 | Rebuild check | done | #16 | #69 |
 | M1-11 | Latency probe: minute close → raw stored → cooked, per symbol | todo | #17 |  |
-| M1-12 | Extend the market calendar to 1999-2027 | in progress | #53 |  |
+| M1-12 | Extend the market calendar to 1999-2027 | in review | #53 |  |
 | M1-13 | Commit parity fixtures, turn on the CI parity job | blocked | #58 |  |
 | M1-14 | Split parity: exact build parity, reported source fidelity | done | #67 | #68 |
 | M2-01 | CDK staging stack | todo | #18 |  |
