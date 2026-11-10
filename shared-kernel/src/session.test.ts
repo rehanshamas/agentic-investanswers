@@ -85,8 +85,10 @@ describe('the NYSE calendar', () => {
   it('refuses a year it has no data for, rather than guessing', () => {
     // Guessing would invent sessions on real holidays and fail parity later,
     // a long way from the cause.
-    expect(() => isTradingDay(nyse, '2019-06-03')).toThrow(CalendarError);
-    expect(() => isTradingDay(nyse, '2027-06-03')).toThrow(CalendarError);
+    // Just outside the covered range, 1999-2027 since M1-12 (moved from 2019
+    // and 2027 with Sham's approval, 2026-11-10).
+    expect(() => isTradingDay(nyse, '1998-12-31')).toThrow(CalendarError);
+    expect(() => isTradingDay(nyse, '2028-01-03')).toThrow(CalendarError);
   });
 
   it('walks to the nearest trading day', () => {
