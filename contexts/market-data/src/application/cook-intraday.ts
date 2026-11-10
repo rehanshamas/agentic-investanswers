@@ -12,6 +12,7 @@ import type {
 } from '@aia/shared-kernel';
 import { barTime, isIntraday, timeframeSeconds } from '@aia/shared-kernel';
 
+import { partitionOf } from '../domain/cooked-partition.js';
 import { affectedBarTimes, rollUp } from '../domain/roll-up.js';
 import type { CookedBarStorePort } from './cooked-bar-store-port.js';
 import type { OneMinuteBarSourcePort } from './one-minute-bar-source-port.js';
@@ -60,9 +61,7 @@ export class CookIntraday {
     spanOf(timeframe);
     const minutes = await this.deps.source.read(instrument.symbol, from, until);
     const bars = rollUp(instrument, timeframe, minutes, this.deps.calendar);
-    if (bars.length > 0) {
-      await this.deps.store.put(instrument.symbol, timeframe, bars);
-    }
+    await this.writeMerged(instrument.symbol, timeframe, bars, (time) => time >= from && time <= until);
     return bars;
   }
 
@@ -98,10 +97,38 @@ export class CookIntraday {
       if (bar !== undefined) rebuilt.push(bar);
     }
 
-    if (rebuilt.length > 0) {
-      await this.deps.store.put(instrument.symbol, timeframe, rebuilt);
-    }
+    const replaced = new Set(affected);
+    await this.writeMerged(instrument.symbol, timeframe, rebuilt, (time) => replaced.has(time));
     return rebuilt;
+  }
+
+  /**
+   * Write `bars` without losing the rest of their partitions.
+   *
+   * The store's `put` replaces each partition it touches whole (a month for
+   * intraday), so writing only the rebuilt bars would delete every other bar
+   * of that month. For each touched partition this reads what is stored,
+   * drops the bars `replaces` covers, adds `bars`, and writes it all back.
+   */
+  private async writeMerged(
+    symbol: string,
+    timeframe: Timeframe,
+    bars: readonly Bar[],
+    replaces: (time: BarTime) => boolean,
+  ): Promise<void> {
+    const byPartition = new Map<string, Bar[]>();
+    for (const bar of bars) {
+      const partition = partitionOf(timeframe, bar.time);
+      const group = byPartition.get(partition);
+      if (group === undefined) byPartition.set(partition, [bar]);
+      else group.push(bar);
+    }
+    for (const [partition, fresh] of byPartition) {
+      const stored = (await this.deps.store.getPartition(symbol, timeframe, partition)) ?? [];
+      const kept = stored.filter((bar) => !replaces(bar.time));
+      const merged = [...kept, ...fresh].sort((a, b) => a.time - b.time);
+      await this.deps.store.put(symbol, timeframe, merged);
+    }
   }
 
   /** Apply new minutes to every intraday timeframe, shortest first. */
