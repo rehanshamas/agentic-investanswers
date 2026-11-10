@@ -9,6 +9,7 @@ import {
 } from '@aia/shared-kernel';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { partitionOf } from '../domain/cooked-partition.js';
 import type { CookedBarStorePort } from './cooked-bar-store-port.js';
 import { CookIntraday, CookIntradayError } from './cook-intraday.js';
 import type { OneMinuteBarSourcePort } from './one-minute-bar-source-port.js';
@@ -212,5 +213,72 @@ describe('CookIntraday', () => {
       expect(store.writes.flatMap((w) => w.bars.map((b) => b.time))).toEqual([at(0)]);
       expect(store.held_('BTCUSD', '5m')[1]).toEqual(before[1]);
     });
+  });
+});
+
+/**
+ * A store with S3CookedBarStore's semantics: `put` replaces each partition it
+ * touches whole. The merging RecordingStore above cannot show a lost
+ * partition; this one can (found in M1-10).
+ */
+class PartitionStore implements CookedBarStorePort {
+  readonly files = new Map<string, Bar[]>();
+
+  put(symbol: string, timeframe: Timeframe, bars: readonly Bar[]): Promise<void> {
+    const groups = new Map<string, Bar[]>();
+    for (const bar of bars) {
+      const key = `${symbol}/${timeframe}/${partitionOf(timeframe, bar.time)}`;
+      groups.set(key, [...(groups.get(key) ?? []), bar]);
+    }
+    for (const [key, group] of groups) this.files.set(key, group);
+    return Promise.resolve();
+  }
+
+  getRange(symbol: string, timeframe: Timeframe, from: BarTime, until: BarTime): Promise<Bar[]> {
+    const all = [...this.files.entries()]
+      .filter(([key]) => key.startsWith(`${symbol}/${timeframe}/`))
+      .flatMap(([, bars]) => bars);
+    return Promise.resolve(
+      all.filter((b) => b.time >= from && b.time <= until).sort((a, b) => a.time - b.time),
+    );
+  }
+
+  getPartition(symbol: string, timeframe: Timeframe, partition: string): Promise<Bar[] | undefined> {
+    return Promise.resolve(this.files.get(`${symbol}/${timeframe}/${partition}`));
+  }
+}
+
+describe('CookIntraday against a store that replaces whole partitions', () => {
+  const day = (n: number): BarTime => barTimeFromUtcParts(2024, 3, n);
+  const minutesOn = (d: number, count: number): Bar[] =>
+    Array.from({ length: count }, (_, i) => m((day(d) + i * 60) as BarTime, '100.00'));
+
+  it('one new minute leaves the rest of the month intact', async () => {
+    const source = new MemorySource();
+    const store = new PartitionStore();
+    const cook = new CookIntraday({ source, store });
+    source.add(...minutesOn(10, 30), ...minutesOn(20, 30));
+    await cook.cookRange(BTC, '5m', day(1), day(31));
+    expect(await store.getRange('BTCUSD', '5m', day(1), day(31))).toHaveLength(12);
+
+    const late = m((day(20) + 30 * 60) as BarTime, '101.00');
+    source.add(late);
+    await cook.applyNewMinutes(BTC, '5m', [late]);
+
+    const after = await store.getRange('BTCUSD', '5m', day(1), day(31));
+    expect(after).toHaveLength(13);
+    expect(after.filter((b) => b.time < day(11))).toHaveLength(6);
+  });
+
+  it('cooking part of a month keeps the bars outside that part', async () => {
+    const source = new MemorySource();
+    const store = new PartitionStore();
+    const cook = new CookIntraday({ source, store });
+    source.add(...minutesOn(10, 30), ...minutesOn(20, 30));
+    await cook.cookRange(BTC, '5m', day(1), day(31));
+
+    await cook.cookRange(BTC, '5m', day(20), day(21));
+
+    expect(await store.getRange('BTCUSD', '5m', day(1), day(31))).toHaveLength(12);
   });
 });

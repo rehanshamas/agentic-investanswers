@@ -104,9 +104,27 @@ function cells(instrument: Instrument, bar: Bar | undefined): string[] {
   );
 }
 
-function explain(difference: BarDifference): string {
-  if (difference.ours === undefined) return 'we have no bar here';
-  if (difference.theirs === undefined) return 'we have a bar the export does not';
+export interface DifferenceLabels {
+  /** Row label for `theirs`; default `export`. */
+  readonly theirs: string;
+  /** Row label for `ours`; default `ours`. */
+  readonly ours: string;
+  /** Explanation when `ours` is missing; default "we have no bar here". */
+  readonly oursMissing: string;
+  /** Explanation when `theirs` is missing; default "we have a bar the export does not". */
+  readonly theirsMissing: string;
+}
+
+const PARITY_LABELS: DifferenceLabels = {
+  theirs: 'export',
+  ours: 'ours',
+  oursMissing: 'we have no bar here',
+  theirsMissing: 'we have a bar the export does not',
+};
+
+function explain(difference: BarDifference, labels: DifferenceLabels): string {
+  if (difference.ours === undefined) return labels.oursMissing;
+  if (difference.theirs === undefined) return labels.theirsMissing;
   const count = difference.fields.length;
   return `${count} field${count === 1 ? '' : 's'} differ${count === 1 ? 's' : ''}: ${difference.fields.join(', ')}`;
 }
@@ -116,10 +134,11 @@ export function formatDifference(
   file: string,
   instrument: Instrument,
   difference: BarDifference,
+  labels: DifferenceLabels = PARITY_LABELS,
 ): string {
   const header = ['', ...BAR_FIELDS];
-  const theirs = ['export', ...cells(instrument, difference.theirs)];
-  const ours = ['ours', ...cells(instrument, difference.ours)];
+  const theirs = [labels.theirs, ...cells(instrument, difference.theirs)];
+  const ours = [labels.ours, ...cells(instrument, difference.ours)];
   const [h, t, o] = table([header, theirs, ours], new Set([1, 2, 3, 4, 5]));
 
   // Carets under each differing column, only when both bars exist.
@@ -139,7 +158,7 @@ export function formatDifference(
   }
 
   return [
-    `${file}: first difference at ${formatUtc(difference.time)} UTC (${difference.time}), ${explain(difference)}`,
+    `${file}: first difference at ${formatUtc(difference.time)} UTC (${difference.time}), ${explain(difference, labels)}`,
     `  ${h ?? ''}`,
     `  ${t ?? ''}`,
     `  ${o ?? ''}`,
