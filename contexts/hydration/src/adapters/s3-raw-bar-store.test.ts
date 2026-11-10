@@ -146,3 +146,31 @@ describe('rawDayKey', () => {
     expect([...keys].sort()).toEqual(keys);
   });
 });
+
+describe.skipIf(!available)('S3RawBarStore gap fills against MinIO', () => {
+  const store = new S3RawBarStore(config);
+  const t = (minute: number): BarTime => barTimeFromUtcParts(2024, 4, 2, 10, minute);
+  const day = (): RawDayRef => ref('2024-04-02');
+
+  it('adds minutes beside a stored day, in new files, and reads them back merged', async () => {
+    await store.putDay(day(), [bar(t(0), '100.00'), bar(t(3), '103.00')]);
+    await store.putFill(day(), [bar(t(1), '101.00')]);
+    await store.putFill(day(), [bar(t(2), '102.00')]);
+
+    const merged = await store.getDay(day());
+    expect(merged?.map((b) => b.time)).toEqual([t(0), t(1), t(2), t(3)]);
+    expect(await store.hasDay(day())).toBe(true);
+  });
+
+  it('never replaces a stored minute, from the day or an earlier fill', async () => {
+    await expect(store.putFill(day(), [bar(t(1), '999.00')])).rejects.toThrow(RawDayError);
+    await expect(store.putFill(day(), [bar(t(3), '999.00')])).rejects.toThrow(RawDayError);
+    expect((await store.getDay(day()))?.find((b) => b.time === t(1))?.close).toBe(price(parseScaled('101.00', 2)));
+  });
+
+  it('refuses a fill for a day that was never stored', async () => {
+    await expect(store.putFill(ref('2024-04-03'), [bar(barTimeFromUtcParts(2024, 4, 3, 1, 0), '1.00')])).rejects.toThrow(
+      /never stored/,
+    );
+  });
+});

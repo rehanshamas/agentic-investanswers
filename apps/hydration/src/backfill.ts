@@ -16,29 +16,13 @@
 import { parseArgs } from 'node:util';
 
 import type { BackfillReport, DayOutcome } from '@aia/hydration';
-import type { HistoryProviderPort } from '@aia/hydration';
-import { Backfill, CoinbaseCandles, MassiveAggregates } from '@aia/hydration';
+import { Backfill } from '@aia/hydration';
 import { CRYPTO_PARITY_INSTRUMENTS, parityInstrument } from '@aia/market-data';
 import type { Instrument } from '@aia/shared-kernel';
 import { barTime, isTradingDay, nyseCalendar } from '@aia/shared-kernel';
 
+import { ProviderSetupError, SETTLE_SECONDS, providers, startFor } from './providers.js';
 import { localStores } from './stores.js';
-
-/**
- * The earliest day the current Massive plan serves: history is a rolling two
- * years (measured 2026-11-10; 2024-11-08 and before answered 403).
- */
-const MASSIVE_EARLIEST = '2024-11-11';
-
-const DEFAULT_FROM = { crypto: '2024-11-01', stock: MASSIVE_EARLIEST };
-
-/**
- * How long a day must have ended before it is stored. Raw is write-once, so a
- * day must be final first. Crypto: 1 hour. Stocks: 2 days (Sham, M1-07),
- * because Massive's newest day can still change: on 2026-11-10 only the
- * previous day carried 6-decimal prints, a sign of corrections still to come.
- */
-const SETTLE_SECONDS = { crypto: 60 * 60, stock: 2 * 24 * 60 * 60 };
 
 function usage(message: string): never {
   console.error(`${message}\nUsage: pnpm backfill [--symbol S]... [--from YYYY-MM-DD] [--until YYYY-MM-DD]`);
@@ -121,20 +105,22 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  let massive: MassiveAggregates | undefined;
-  const providerFor = (instrument: Instrument): HistoryProviderPort => {
-    if (instrument.kind === 'crypto') return new CoinbaseCandles();
-    const apiKey = process.env['MASSIVE_API_KEY'] ?? '';
-    if (apiKey === '') usage('MASSIVE_API_KEY is not set (put it in .env).');
-    massive ??= new MassiveAggregates({ apiKey });
-    return massive;
+  const provider = providers();
+  const providerFor = (instrument: Instrument) => {
+    try {
+      return provider(instrument);
+    } catch (error) {
+      if (error instanceof ProviderSetupError) usage(error.message);
+      throw error;
+    }
   };
 
   const progress = new MonthlyProgress();
   const now = barTime(Math.floor(Date.now() / 1000));
   const reports: Array<{ report: BackfillReport; unexpected: string[] }> = [];
   for (const instrument of instruments) {
-    const start = from ?? DEFAULT_FROM[instrument.kind];
+    const { start, moved } = startFor(instrument, from);
+    if (moved) console.log(`(${instrument.symbol}: start moved to ${start}; the Massive plan serves nothing earlier)`);
     const empties: string[] = [];
     const backfill = new Backfill({
       provider: providerFor(instrument),
