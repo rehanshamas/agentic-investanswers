@@ -16,10 +16,10 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M1-04 | CoinAPI history backfill for BTC/ETH 1m into the raw store; idempotent, resumable | done | #10 | #66 |
 | M1-05 | CoinAPI live stream | todo | #11 |  |
 | M1-06 | Cook intraday rollups 1m → 5m/15m/1h/4h, incrementally (one new 1m updates only the affect | done | #12 | #62 |
-| M1-07 | Massive (stocks) backfill and live stream for 2 symbols, same ports as crypto | in review | #13 | #72 |
+| M1-07 | Massive (stocks) backfill and live stream for 2 symbols, same ports as crypto | done | #13 | #72 |
 | M1-07b | Massive live stream (needs a plan with WebSocket, OI-28) | blocked | #71 |  |
 | M1-08 | Cook D/W/M and stock session-aware rollups (regular hours, holidays) | todo | #14 |  |
-| M1-09 | Gap detector + auto re-fetch (completeness check), per market hours | todo | #15 |  |
+| M1-09 | Gap detector + auto re-fetch (completeness check), per market hours | in progress | #15 |  |
 | M1-10 | Rebuild check | done | #16 | #69 |
 | M1-11 | Latency probe: minute close → raw stored → cooked, per symbol | todo | #17 |  |
 | M1-12 | Extend the market calendar to 1999-2027 | done | #53 | #70 |
