@@ -5,6 +5,7 @@
 
 import {
   GetObjectCommand,
+  ListObjectsV2Command,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -105,4 +106,18 @@ export async function exists(client: S3Client, bucket: string, key: string): Pro
     if (isNotFound(error)) return false;
     throw error;
   }
+}
+
+/** Every key under `prefix`, in key order. */
+export async function listKeys(client: S3Client, bucket: string, prefix: string): Promise<string[]> {
+  const keys: string[] = [];
+  let token: string | undefined;
+  do {
+    const page = await client.send(
+      new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken: token }),
+    );
+    for (const object of page.Contents ?? []) if (object.Key !== undefined) keys.push(object.Key);
+    token = page.NextContinuationToken;
+  } while (token !== undefined);
+  return keys.sort();
 }

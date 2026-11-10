@@ -43,8 +43,19 @@ export interface RawBarStorePort {
    */
   putDay(ref: RawDayRef, bars: readonly Bar[]): Promise<void>;
 
-  /** Read a stored day, or `undefined` if it was never written. */
+  /**
+   * Read a stored day, merged with its gap fills, or `undefined` if the day
+   * was never written.
+   */
   getDay(ref: RawDayRef): Promise<Bar[] | undefined>;
+
+  /**
+   * Store minutes found after the day was written (M1-09), in a new
+   * write-once file beside it. The day file itself is never edited. Every
+   * minute must be absent from the day and its earlier fills, so a fill only
+   * ever adds; the store refuses anything else. The day must already exist.
+   */
+  putFill(ref: RawDayRef, bars: readonly Bar[]): Promise<void>;
 
   /** Whether a day is already stored, without transferring it. */
   hasDay(ref: RawDayRef): Promise<boolean>;

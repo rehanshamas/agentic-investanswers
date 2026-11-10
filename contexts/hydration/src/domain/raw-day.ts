@@ -61,3 +61,39 @@ export function assertStorableRawDay(date: string, bars: readonly Bar[]): void {
     previous = bar.time;
   }
 }
+
+/**
+ * Check a gap fill may be stored for a raw day (M1-09).
+ *
+ * A raw day is never edited. Minutes found later are stored beside it as
+ * write-once fill files, and a reader merges them. So a fill must be a valid
+ * set of minutes for the day, and every one of them must be absent from the
+ * day and its earlier fills: a fill only ever adds, it never replaces.
+ */
+export function assertStorableFill(
+  date: string,
+  existing: readonly Bar[],
+  fill: readonly Bar[],
+): void {
+  if (fill.length === 0) throw new RawDayError(`A gap fill for ${date} must hold at least one bar`);
+  assertStorableRawDay(date, fill);
+  const held = new Set(existing.map((bar) => bar.time));
+  for (const bar of fill) {
+    if (held.has(bar.time)) {
+      throw new RawDayError(
+        `Gap fill for ${date} would replace the stored minute ${bar.time}; raw is never edited`,
+      );
+    }
+  }
+}
+
+/** Merge a day file with its fills, ascending; overlapping minutes are refused. */
+export function mergeDay(date: string, parts: ReadonlyArray<readonly Bar[]>): Bar[] {
+  const merged = parts.flat().sort((a, b) => a.time - b.time);
+  for (let i = 1; i < merged.length; i++) {
+    if (merged[i]?.time === merged[i - 1]?.time) {
+      throw new RawDayError(`Raw day ${date} has the minute ${merged[i]?.time} twice across its files`);
+    }
+  }
+  return merged;
+}

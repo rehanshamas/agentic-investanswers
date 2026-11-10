@@ -40,3 +40,9 @@ export {
   MassiveError,
   parseAggregates,
 } from './adapters/massive/massive-aggregates.js';
+
+export type { GapDay, GapRange, GapRepairDeps, GapReport } from './application/gap-repair.js';
+export { GapRepair } from './application/gap-repair.js';
+export { expectedSpan, findHoles, holeRuns } from './domain/gaps.js';
+export { assertStorableFill, mergeDay } from './domain/raw-day.js';
+export { rawFillKey } from './adapters/s3-raw-bar-store.js';
