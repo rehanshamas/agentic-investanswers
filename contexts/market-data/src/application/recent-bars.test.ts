@@ -134,6 +134,15 @@ describe('RecentBars', () => {
     expect(store.reads).toBe(2);
   });
 
+  it('reads the store when the cache cannot be reached', async () => {
+    const { cache, recent } = setup(fiveMinute);
+    const down = () => Promise.reject(new Error('ECONNREFUSED'));
+    cache.get = down;
+    cache.version = down;
+    cache.fill = down;
+    expect((await recent.read(BTC, '5m', { limit: 2, now })).map((b) => b.time)).toEqual([at(40), at(45)]);
+  });
+
   it('refuses a limit that is not a positive whole number', async () => {
     const { recent } = setup(fiveMinute);
     await expect(recent.read(BTC, '5m', { limit: 0, now })).rejects.toThrow(RecentBarsError);

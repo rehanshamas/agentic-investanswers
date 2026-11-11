@@ -6,6 +6,8 @@
 // window. Writers call `onBarClosed` after the store has the new bars, so the
 // cache never runs ahead of the store; if a cache write fails, the window is
 // dropped, so the next read refills it rather than serving a stale one.
+// The cache is only a shortcut: if it cannot be reached, reads go to the
+// store (M2-03), so a Redis outage slows charts rather than breaking them.
 //
 // The History API (M2-03) reads through this; M2-04's live gateway consumes
 // the same BarClosed events.
@@ -74,7 +76,7 @@ export class RecentBars {
     const lookback = lookbackStart(timeframe, until, limit);
     const symbol = instrument.symbol;
 
-    const window = await this.deps.cache.get(symbol, timeframe);
+    const window = await this.deps.cache.get(symbol, timeframe).catch(() => undefined);
     const hit = window === undefined ? undefined : readWindow(window, limit, before, lookback);
     if (hit !== undefined) return hit;
 
@@ -151,7 +153,7 @@ export class RecentBars {
 
   /** Read the newest `capacity` bars' lookback from the store and make it the window. */
   private async refill(symbol: string, timeframe: Timeframe, now: BarTime): Promise<Bar[]> {
-    const version = await this.deps.cache.version(symbol, timeframe);
+    const version = await this.deps.cache.version(symbol, timeframe).catch(() => undefined);
     const from = lookbackStart(timeframe, now, this.capacity);
     const bars = await this.fromStore(symbol, timeframe, from, now);
     const kept = bars.slice(Math.max(bars.length - this.capacity, 0));
@@ -159,7 +161,9 @@ export class RecentBars {
     // If a bar changed during the read, the fill is refused (the window would
     // miss it) and the next read tries again; this answer is still the store
     // as it was read.
-    await this.deps.cache.fill(symbol, timeframe, { from: start, bars: kept }, version);
+    if (version !== undefined) {
+      await this.deps.cache.fill(symbol, timeframe, { from: start, bars: kept }, version).catch(() => false);
+    }
     return kept;
   }
 
