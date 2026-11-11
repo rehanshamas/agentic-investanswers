@@ -18,11 +18,11 @@ import {
   parityInstrument,
   rebuildPassed,
 } from '@aia/market-data';
+import { loadFeedPlan } from '@aia/hydration';
 import type { PartitionResult } from '@aia/market-data';
 import type { Instrument } from '@aia/shared-kernel';
 import { nyseCalendar } from '@aia/shared-kernel';
 
-import { loadFeedPlan } from './feeds.js';
 import { localStores, monthsBetween } from './stores.js';
 
 const DEFAULT_FROM = '2024-11-01';

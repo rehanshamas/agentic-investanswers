@@ -1,8 +1,8 @@
-import type { RawDayRef } from '@aia/hydration';
 import type { Bar, BarTime } from '@aia/shared-kernel';
 import { barTimeFromUtcParts, parseScaled, price, volume } from '@aia/shared-kernel';
 import { describe, expect, it } from 'vitest';
 
+import type { RawDayRef } from './raw-bar-store-port.js';
 import { RawMinuteSource } from './raw-minute-source.js';
 
 function bar(time: BarTime): Bar {

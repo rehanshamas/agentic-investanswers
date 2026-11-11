@@ -1,17 +1,21 @@
-// Wire hydration's raw store into market-data's OneMinuteBarSourcePort.
-//
-// market-data declares the port so it never depends on hydration, and this
-// app connects the two (CLAUDE.md rule 1: apps/ only wire things together).
-// The parity harness reads 1m through it; M1-10's rebuild check can too.
+// Raw 1-minute bars as one series: what market-data's OneMinuteBarSourcePort
+// asks for. market-data declares the port so it never depends on hydration;
+// this class satisfies it structurally, and the apps hand it over. Lives here
+// because hydration owns raw (moved from apps/hydration in M2-03, so the
+// platform process can read 1m too). The parity harness, the rebuild check,
+// cooking and the History API all read 1m through it.
 //
 // A settled day file always wins. A day without one (today, or a day not yet
 // backfilled) is read from the live stream's minutes (M1-05), so cooked stays
 // rebuildable from raw alone, live minutes included.
 
-import type { LiveRawStorePort, RawBarStorePort } from '@aia/hydration';
-import type { OneMinuteBarSourcePort } from '@aia/market-data';
 import type { Bar, BarTime } from '@aia/shared-kernel';
 import { addDays, zonedDateKey } from '@aia/shared-kernel';
+
+import type { FeedPlan } from '../domain/feed-plan.js';
+import { feedsFor, historySourceOn, liveSourceOn } from '../domain/feed-plan.js';
+import type { LiveRawStorePort } from './live-raw-store-port.js';
+import type { RawBarStorePort } from './raw-bar-store-port.js';
 
 /**
  * Which provider's raw files hold an instrument's 1-minute bars on a UTC day,
@@ -21,7 +25,7 @@ import { addDays, zonedDateKey } from '@aia/shared-kernel';
  */
 export type ProviderOf = (symbol: string, date: string) => string | undefined;
 
-export class RawMinuteSource implements OneMinuteBarSourcePort {
+export class RawMinuteSource {
   constructor(
     private readonly raw: Pick<RawBarStorePort, 'getDay'> & Partial<Pick<LiveRawStorePort, 'getLiveMinutes'>>,
     private readonly providerOf: ProviderOf,
@@ -54,4 +58,14 @@ export class RawMinuteSource implements OneMinuteBarSourcePort {
     if (provider === undefined || this.raw.getLiveMinutes === undefined) return undefined;
     return this.raw.getLiveMinutes({ provider, symbol, date });
   }
+}
+
+/** Which provider's raw files hold an instrument's bars for a day, per the plan. */
+export function rawProviderOf(plan: FeedPlan): ProviderOf {
+  return (symbol, date) => historySourceOn(feedsFor(plan, symbol), date)?.provider;
+}
+
+/** Which provider's live minutes stand in for a day not yet backfilled, per the plan. */
+export function liveProviderOf(plan: FeedPlan): ProviderOf {
+  return (symbol, date) => liveSourceOn(feedsFor(plan, symbol), date)?.provider;
 }

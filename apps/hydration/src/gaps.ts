@@ -13,12 +13,12 @@
 
 import { parseArgs } from 'node:util';
 
-import { FeedPlanError, FeedSetupError, feedsFor, historySegments, historyStart } from '@aia/hydration';
+import { FeedPlanError, FeedSetupError, feedsFor, historySegments, historyStart, loadFeedPlan } from '@aia/hydration';
 import { PARITY_INSTRUMENTS, parityInstrument } from '@aia/market-data';
 import type { Instrument } from '@aia/shared-kernel';
 import { addDays, barTime, nyseCalendar } from '@aia/shared-kernel';
 
-import { feedAdapters, loadFeedPlan } from './feeds.js';
+import { feedAdapters } from './feeds.js';
 import { dropCachedWindows } from './cache.js';
 import { repairAndRecook } from './repair-and-recook.js';
 import { localStores } from './stores.js';

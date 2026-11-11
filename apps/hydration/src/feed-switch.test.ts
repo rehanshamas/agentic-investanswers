@@ -11,7 +11,9 @@ import {
   dayStart,
   feedsFor,
   historySegments,
+  RawMinuteSource,
   parseFeedPlan,
+  rawProviderOf,
 } from '@aia/hydration';
 import type { CookedBarStorePort } from '@aia/market-data';
 import { BTCUSD, CookIntraday, partitionOf } from '@aia/market-data';
@@ -19,8 +21,6 @@ import type { Bar, Instrument, Timeframe } from '@aia/shared-kernel';
 import { barTime, barTimeFromUtcParts, nyseCalendar, price, volume } from '@aia/shared-kernel';
 import { describe, expect, it } from 'vitest';
 
-import { rawProviderOf } from './feeds.js';
-import { RawMinuteSource } from './raw-minute-source.js';
 
 /** A provider whose every price is `level`, so its bars are recognisable. */
 function flatProvider(name: string, level: number): HistoryProviderPort {

@@ -20,14 +20,23 @@ import { appendFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 
 import type { LiveEvent, RawDayRef, Scheduler } from '@aia/hydration';
-import { FeedPlanError, FeedSetupError, LiveStream, feedsFor, liveSourceOn } from '@aia/hydration';
+import {
+  FeedPlanError,
+  FeedSetupError,
+  LiveStream,
+  RawMinuteSource,
+  feedsFor,
+  liveProviderOf,
+  liveSourceOn,
+  loadFeedPlan,
+  rawProviderOf,
+} from '@aia/hydration';
 import { CookIntraday, PARITY_INSTRUMENTS, RecentBars, barClosedEvents, parityInstrument } from '@aia/market-data';
 import type { Bar, Instrument, Timeframe } from '@aia/shared-kernel';
 import { formatScaled, nyseCalendar, rawPriceScale, rawVolumeScale, zonedDateKey } from '@aia/shared-kernel';
 
 import { CACHED_TIMEFRAMES, connectCache } from './cache.js';
-import { feedAdapters, liveProviderOf, loadFeedPlan, rawProviderOf } from './feeds.js';
-import { RawMinuteSource } from './raw-minute-source.js';
+import { feedAdapters } from './feeds.js';
 import { localStores } from './stores.js';
 
 const USAGE = 'Usage: pnpm live [--symbol S]... [--record FILE]';
