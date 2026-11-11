@@ -39,7 +39,7 @@ To start a task, ask Claude: "Start task M1-06". It copies the template into `ta
 | M2-02 | Cache layer: recent bars per instrument/timeframe in Redis, updated on BarClosed | A | M1-06 | Cache hit test; cache equals the store after replay |
 | M2-03 | History API: `GET /bars?instrument&tf&before&limit` (paged, capped), cache first, then S3 | A | M2-02 | Contract tests; the cap is enforced |
 | M2-04 | Live gateway: one WebSocket per browser, subscribe per visible instrument/tf, batched updates | A | M2-02 | Load test locally with 1k fake clients; bars arrive in order |
-| M2-05 | Chart app: React + Lightweight Charts, first ~500 bars, live bar, symbol and timeframe switch | B | M2-03, M2-04 | Playwright test: chart renders and the live bar updates |
+| M2-05 | Chart app: React + KLineChart (no TradingView libraries; built-in indicators off), first ~500 bars, live bar, symbol and timeframe switch | B | M2-03, M2-04 | Playwright test: chart renders and the live bar updates |
 | M2-06 | Scroll-back paging, smooth loading of older history | B | M2-05 | Playwright test scrolls back 2 years without gaps |
 | M2-07 | **Freshness checker:** minute close → storage → cache → open chart, per step | C | M2-04 | Report per staging release; thresholds configurable |
 | M2-08 | Sign-in integration with InvestAnswers (token validation), user context | A | client's auth details | Test accounts per plan sign in on staging |
