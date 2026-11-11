@@ -27,7 +27,7 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M1-14 | Split parity: exact build parity, reported source fidelity | done | #67 | #68 |
 | M2-01 | CDK staging stack | todo | #18 |  |
 | M2-02 | Cache layer | done | #19 | #77 |
-| M2-03 | History API | in progress | #20 |  |
+| M2-03 | History API | in review | #20 | PRNUM |
 | M2-04 | Live gateway | todo | #21 |  |
 | M2-05 | Chart app | todo | #22 |  |
 | M2-06 | Scroll-back paging, smooth loading of older history | todo | #23 |  |
