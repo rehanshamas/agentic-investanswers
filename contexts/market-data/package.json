@@ -16,7 +16,8 @@
   "dependencies": {
     "@aia/shared-kernel": "workspace:*",
     "@aws-sdk/client-s3": "^3.1161.0",
-    "@dsnp/parquetjs": "^1.9.4"
+    "@dsnp/parquetjs": "^1.9.4",
+    "redis": "^5.12.1"
   },
   "nx": {
     "tags": [

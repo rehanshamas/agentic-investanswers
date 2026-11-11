@@ -21,8 +21,14 @@ jobs:
           MINIO_ROOT_USER: minio
           MINIO_ROOT_PASSWORD: minio12345
         ports: ["9000:9000"]
+      # Redis for the recent-bars cache tests (M2-02), which otherwise skip.
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 2s --health-timeout 2s --health-retries 15
     env:
       AIA_S3_ENDPOINT: http://127.0.0.1:9000
+      AIA_REDIS_TEST_URL: redis://127.0.0.1:6379/15
     steps:
       - uses: actions/checkout@v4
         with:
