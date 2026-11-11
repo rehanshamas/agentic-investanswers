@@ -19,6 +19,7 @@ import type { Instrument } from '@aia/shared-kernel';
 import { addDays, barTime, nyseCalendar } from '@aia/shared-kernel';
 
 import { feedAdapters, loadFeedPlan } from './feeds.js';
+import { dropCachedWindows } from './cache.js';
 import { repairAndRecook } from './repair-and-recook.js';
 import { localStores } from './stores.js';
 
@@ -68,6 +69,7 @@ async function main(): Promise<void> {
   const now = barTime(Math.floor(Date.now() / 1000));
   const today = new Date().toISOString().slice(0, 10);
   let clean = true;
+  const changed = new Set<string>();
 
   for (const instrument of instruments) {
     // Default: the last 7 days, but never before the plan's default start.
@@ -112,6 +114,7 @@ async function main(): Promise<void> {
       if (report.backfill.failed.length > 0 || report.backfill.aborted) {
         console.log(`    missing-day backfill failures: ${report.backfill.failed.map((f) => f.date).join(', ')}`);
       }
+      if (report.monthsTouched.length > 0) changed.add(instrument.symbol);
       if (recooked.length > 0) console.log(`  re-cooked ${recooked.join(', ')}`);
       else if (instrument.kind === 'stock' && report.monthsTouched.length > 0) {
         console.log(`  raw changed in ${report.monthsTouched.join(', ')}; stock re-cooking is M1-08`);
@@ -119,6 +122,13 @@ async function main(): Promise<void> {
       if (failed.length > 0 || report.backfill.failed.length > 0 || report.backfill.aborted) clean = false;
     }
     console.log('');
+  }
+  // Raw and cooked bars changed outside BarClosed: drop those cached windows (M2-02).
+  try {
+    await dropCachedWindows([...changed]);
+  } catch (error) {
+    console.error(`Could not drop the cached windows of ${[...changed].join(', ')}, which may now be stale: ${String(error)}`);
+    clean = false;
   }
   process.exit(clean ? 0 : 1);
 }

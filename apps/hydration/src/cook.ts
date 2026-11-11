@@ -9,6 +9,11 @@
 //   pnpm cook --symbol ETHUSD --from 2025-06-01 --until 2025-08-31
 //
 // 1D, 1W and 1M are not cooked until M1-08.
+//
+// Afterwards the recent-bars cache windows of the instruments cooked are
+// dropped (M2-02), since a re-cook can change bars they hold; the next read
+// refills them. If Redis cannot be reached for that, the bars are still
+// cooked but the command exits 1.
 
 import { parseArgs } from 'node:util';
 
@@ -16,6 +21,7 @@ import { CRYPTO_PARITY_INSTRUMENTS, CookIntraday, parityInstrument } from '@aia/
 import type { Instrument } from '@aia/shared-kernel';
 import { nyseCalendar } from '@aia/shared-kernel';
 
+import { dropCachedWindows } from './cache.js';
 import { loadFeedPlan } from './feeds.js';
 import { localStores, monthsBetween } from './stores.js';
 
@@ -70,6 +76,12 @@ async function main(): Promise<void> {
     console.log(`  ${instrument.symbol}: ${total} bars written across ${months.length} months\n`);
   }
   console.log('1D, 1W and 1M are not cooked yet (M1-08).');
+  try {
+    await dropCachedWindows(instruments.map((i) => i.symbol));
+  } catch (error) {
+    console.error(`Could not drop the cached windows, which may now be stale: ${String(error)}. Run again once Redis is up.`);
+    process.exit(1);
+  }
 }
 
 await main().catch((error: unknown) => {

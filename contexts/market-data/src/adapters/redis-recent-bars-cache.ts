@@ -69,7 +69,11 @@ export interface RedisCacheOptions {
   /** Defaults to the local Redis from docker-compose.yml. */
   readonly url?: string | undefined;
   readonly capacity?: number;
-  /** Keep reconnecting forever (a long-running process), or give up after a few tries (a command). */
+  /**
+   * After the first connection: keep reconnecting forever (a long-running
+   * process), or give up after a few tries (a command). The first connection
+   * always gives up after a few tries, so a missing Redis is reported at once.
+   */
   readonly reconnect?: 'forever' | 'briefly';
   /** Told about connection errors; the client keeps them from crashing the process. */
   readonly onError?: (error: Error) => void;
@@ -84,18 +88,26 @@ export class RedisRecentBarsCache implements RecentBarsCachePort {
   ) {}
 
   static async connect(options: RedisCacheOptions = {}): Promise<RedisRecentBarsCache> {
+    let connected = false;
     const client = createClient({
       url: options.url ?? 'redis://127.0.0.1:6379',
+      // Fail commands while disconnected rather than queue them: a queued
+      // update would hold up whoever awaits it (cooking, in `pnpm live`), and
+      // the caller drops the window instead (see RecentBars.onBarClosed).
+      disableOfflineQueue: true,
       socket: {
         connectTimeout: 2_000,
-        reconnectStrategy:
-          options.reconnect === 'forever'
-            ? (retries: number) => Math.min(100 * 2 ** retries, 5_000)
-            : (retries: number) => (retries >= 2 ? new RecentBarsCacheError('Redis is unreachable') : 200),
+        reconnectStrategy: (retries: number) =>
+          connected && options.reconnect === 'forever'
+            ? Math.min(100 * 2 ** retries, 5_000)
+            : retries >= 2
+              ? new RecentBarsCacheError('Redis is unreachable')
+              : 200,
       },
     });
     client.on('error', (error: Error) => options.onError?.(error));
     await client.connect();
+    connected = true;
     return new RedisRecentBarsCache(client, options.capacity ?? RECENT_BARS_CAPACITY);
   }
 

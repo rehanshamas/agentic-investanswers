@@ -13,6 +13,10 @@
 // Exits 0 when every planned day is stored or skipped, 1 when some failed or
 // a trading day came back empty, and 2 on a setup error. A stock's weekends
 // and holidays are empty by nature and do not count against the run.
+//
+// A stored day file supersedes the live minutes the 1m reader used before, so
+// the recent-bars cache windows of instruments with new days are dropped
+// (M2-02); if Redis cannot be reached for that, the run exits 1.
 
 import { parseArgs } from 'node:util';
 
@@ -22,6 +26,7 @@ import { CRYPTO_PARITY_INSTRUMENTS, parityInstrument } from '@aia/market-data';
 import type { Instrument } from '@aia/shared-kernel';
 import { barTime, isTradingDay, nyseCalendar } from '@aia/shared-kernel';
 
+import { dropCachedWindows } from './cache.js';
 import { feedAdapters, loadFeedPlan } from './feeds.js';
 import { localStores } from './stores.js';
 
@@ -119,6 +124,7 @@ async function main(): Promise<void> {
   const progress = new MonthlyProgress();
   const now = barTime(Math.floor(Date.now() / 1000));
   const reports: Array<{ report: BackfillReport; unexpected: string[] }> = [];
+  const changed = new Set<string>();
   for (const instrument of instruments) {
     const feeds = feedsFor(plan, instrument.symbol);
     const { start, moved } = historyStart(feeds, from);
@@ -146,6 +152,7 @@ async function main(): Promise<void> {
       });
       progress.flush(instrument);
       reports.push({ report, unexpected: unexpectedEmpties(instrument, empties) });
+      if (report.stored > 0) changed.add(instrument.symbol);
     }
   }
 
@@ -157,9 +164,15 @@ async function main(): Promise<void> {
     }
     if (unexpected.length > 0) console.log(`  empty trading days: ${unexpected.join(', ')}`);
   }
-  const clean = reports.every(
+  let clean = reports.every(
     ({ report, unexpected }) => report.failed.length === 0 && unexpected.length === 0 && !report.aborted,
   );
+  try {
+    await dropCachedWindows([...changed]);
+  } catch (error) {
+    console.error(`Could not drop the cached windows of ${[...changed].join(', ')}, which may now be stale: ${String(error)}`);
+    clean = false;
+  }
   process.exit(clean ? 0 : 1);
 }
 

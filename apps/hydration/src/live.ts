@@ -2,7 +2,9 @@
 // minute ends, and cook the intraday timeframes it touches (M1-05).
 //
 // Composition only: LiveStream and the adapters live in @aia/hydration,
-// CookIntraday in @aia/market-data. Which provider streams each instrument
+// CookIntraday and RecentBars in @aia/market-data. After each minute is cooked,
+// its BarClosed events update the recent-bars cache in Redis (M2-02), so the
+// cache only changes once the store has (AIA_REDIS_URL, default the local one). Which provider streams each instrument
 // comes from the feed plan, config/feeds.json (CLAUDE.md rule 7); if the plan
 // switches an instrument's live provider at a UTC midnight, the stream is
 // restarted on the new one.
@@ -12,17 +14,18 @@
 //   pnpm live --record rec.jsonl                also save every raw message, for replay
 //
 // Runs until stopped (Ctrl-C); minutes not yet closed are not written. Exits 2
-// on a setup error.
+// on a setup error, including Redis being unreachable at start.
 
 import { appendFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 
 import type { LiveEvent, RawDayRef, Scheduler } from '@aia/hydration';
 import { FeedPlanError, FeedSetupError, LiveStream, feedsFor, liveSourceOn } from '@aia/hydration';
-import { CookIntraday, PARITY_INSTRUMENTS, parityInstrument } from '@aia/market-data';
-import type { Bar, Instrument } from '@aia/shared-kernel';
+import { CookIntraday, PARITY_INSTRUMENTS, RecentBars, barClosedEvents, parityInstrument } from '@aia/market-data';
+import type { Bar, Instrument, Timeframe } from '@aia/shared-kernel';
 import { formatScaled, nyseCalendar, rawPriceScale, rawVolumeScale, zonedDateKey } from '@aia/shared-kernel';
 
+import { CACHED_TIMEFRAMES, connectCache } from './cache.js';
 import { feedAdapters, liveProviderOf, loadFeedPlan, rawProviderOf } from './feeds.js';
 import { RawMinuteSource } from './raw-minute-source.js';
 import { localStores } from './stores.js';
@@ -108,6 +111,33 @@ async function main(): Promise<void> {
   });
   const cooking = new Map<string, Promise<void>>();
 
+  let cache;
+  try {
+    cache = await connectCache({
+      reconnect: 'forever',
+      onError: (error) => console.log(`${new Date().toISOString().slice(11, 19)} redis: ${error.message}`),
+    });
+  } catch (error) {
+    usage(`Redis is unreachable (${String(error)}); the recent-bars cache must follow every minute. Run: docker compose up -d`);
+  }
+  const redis = cache;
+  const recent = new RecentBars({ cache: redis, store: stores.cooked, minutes: stores.minutes });
+  // Symbols whose cached windows may have missed an update while Redis was
+  // unreachable. Their windows are dropped before the next update is applied.
+  const staleCache = new Set<string>();
+  const updateCache = async (symbol: string, minute: Bar, rebuilt: Map<Timeframe, Bar[]>): Promise<void> => {
+    try {
+      if (staleCache.has(symbol)) {
+        await recent.invalidate(symbol, CACHED_TIMEFRAMES);
+        staleCache.delete(symbol);
+      }
+      await recent.onBarClosed(barClosedEvents(symbol, minute, rebuilt));
+    } catch (error) {
+      staleCache.add(symbol);
+      throw error;
+    }
+  };
+
   const record = values.record;
   const onEvent = (provider: string) => (event: LiveEvent) => {
     const stamp = new Date().toISOString().slice(11, 19);
@@ -135,17 +165,33 @@ async function main(): Promise<void> {
           if (!minutes.some((b) => b.time === event.bar.time)) minutes.push(event.bar);
         });
         console.log(`${stamp} ${event.symbol} ${hhmm(event.bar.time)} ${describe(instrument, event.bar)}`);
-        // Stocks are not cooked until M1-08; none streams yet anyway (OI-28).
-        if (instrument.kind === 'stock') return;
         const previous = cooking.get(event.symbol) ?? Promise.resolve();
+        // Stocks are not cooked until M1-08, so only their 1m window follows;
+        // none streams yet anyway (OI-28).
+        if (instrument.kind === 'stock') {
+          cooking.set(
+            event.symbol,
+            previous
+              .then(() => updateCache(event.symbol, event.bar, new Map()))
+              .catch((error: unknown) => console.log(`${stamp} ${event.symbol}: cache update failed: ${String(error)}`)),
+          );
+          return;
+        }
         cooking.set(
           event.symbol,
           previous
             .then(() => cachedRaw.getLiveMinutes(ref))
             .then(() => cook.applyNewMinutesToAll(instrument, [event.bar]))
             .then(
-              () => undefined,
-              (error: unknown) => console.log(`${stamp} ${event.symbol}: cooking failed: ${String(error)}`),
+              (rebuilt) =>
+                updateCache(event.symbol, event.bar, rebuilt).catch((error: unknown) =>
+                  console.log(`${stamp} ${event.symbol}: cache update failed, its windows are dropped once Redis is back: ${String(error)}`),
+                ),
+              (error: unknown) => {
+                // The minute is in raw but its bars are not cooked, so cached windows are behind the store.
+                staleCache.add(event.symbol);
+                console.log(`${stamp} ${event.symbol}: cooking failed: ${String(error)}`);
+              },
             ),
         );
         return;
@@ -194,6 +240,7 @@ async function main(): Promise<void> {
     console.log('Stopping; minutes not yet closed are not written.');
     void Promise.all(running.map(({ stream }) => stream.stop()))
       .then(() => Promise.all(cooking.values()))
+      .then(() => redis.close())
       .then(() => process.exit(0));
   };
   process.on('SIGINT', shutdown);
