@@ -26,7 +26,7 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M1-13 | Commit parity fixtures, turn on the CI parity job | blocked | #58 |  |
 | M1-14 | Split parity: exact build parity, reported source fidelity | done | #67 | #68 |
 | M2-01 | CDK staging stack | todo | #18 |  |
-| M2-02 | Cache layer | in review | #19 | PRNUM |
+| M2-02 | Cache layer | in review | #19 | #77 |
 | M2-03 | History API | todo | #20 |  |
 | M2-04 | Live gateway | todo | #21 |  |
 | M2-05 | Chart app | todo | #22 |  |
