@@ -46,4 +46,20 @@ describe('RawMinuteSource', () => {
     expect(await new RawMinuteSource(raw, () => 'coinapi').read('BTCUSD', early2, early1)).toEqual([]);
     expect(raw.asked).toEqual([]);
   });
+
+  it('reads live minutes for a day with no day file, and prefers the day file once it exists (M1-05)', async () => {
+    const live: Record<string, Bar[]> = {
+      'live/BTCUSD/2025-12-31': [bar(late31)],
+      'live/BTCUSD/2026-01-01': [bar(early1), bar(barTimeFromUtcParts(2026, 1, 1, 0, 2))],
+    };
+    const raw = Object.assign(new MemoryRaw({ 'hist/BTCUSD/2025-12-31': [bar(late31), bar(late31b)] }), {
+      getLiveMinutes: (ref: RawDayRef) => Promise.resolve(live[`${ref.provider}/${ref.symbol}/${ref.date}`] ?? []),
+    });
+    const source = new RawMinuteSource(raw, () => 'hist', () => 'live');
+
+    const bars = await source.read('BTCUSD', late31, early2);
+
+    // 31 Dec from its day file (2 bars, not the 1 live one); 1 Jan from live minutes.
+    expect(bars.map((b) => b.time)).toEqual([late31, late31b, early1, barTimeFromUtcParts(2026, 1, 1, 0, 2)]);
+  });
 });

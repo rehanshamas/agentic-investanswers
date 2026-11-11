@@ -10,6 +10,7 @@ Read before planning: `docs/architecture.md`, `docs/bar-rules.md`, `docs/glossar
 4. **Sessions have human and agent sub-contexts.** Every request carries a principal (human or agent). Plan checks apply to both.
 5. **Indicator internals never leave the indicator engine.** Only drawn outputs (lines, bands, markers, levels) at display precision go to the API, the WebSocket or agents. Indicator source lives only in `agentic-investanswers-indicators`.
 6. **`domain/` is pure:** imports only `shared-kernel`. No AWS SDK, no HTTP, no `Date.now()` (time is an argument).
+7. **Every data feed is replaceable (client requirement).** Changing the provider of any instrument, history or live, is a change to the feed plan (`docs/architecture.md`, "Feed independence") plus at most one new adapter. No other code changes. Provider names, symbols, field names, units and quirks stay inside `contexts/hydration/src/adapters/<provider>/`. Everything outside sees only our own types (`Bar`, trades in our units, our instrument symbols). Raw and cooked schemas carry no provider-specific column. Never branch on a provider name or pick a provider from an instrument's kind outside the feed plan and the adapter registry. A switch must not hide history already stored from the old provider.
 
 ## Tests are the spec
 - Never change a file under `fixtures/`, a parity tolerance or an existing assertion to make a test pass. If you believe one is wrong, **stop and explain why**.

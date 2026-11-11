@@ -14,6 +14,7 @@
     "parity": "tsx apps/hydration/src/parity.ts",
     "backfill": "tsx --env-file-if-exists=.env apps/hydration/src/backfill.ts",
     "gaps": "tsx --env-file-if-exists=.env apps/hydration/src/gaps.ts",
+    "live": "tsx --env-file-if-exists=.env apps/hydration/src/live.ts",
     "cook": "tsx apps/hydration/src/cook.ts",
     "rebuild-check": "tsx apps/hydration/src/rebuild-check.ts",
     "owner-inputs": "node scripts/owner-inputs.mjs",

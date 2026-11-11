@@ -4,19 +4,12 @@
 // Locally they point at the MinIO from docker-compose.yml; every setting can be
 // overridden by environment variable for staging.
 
+import type { FeedPlan } from '@aia/hydration';
 import { S3RawBarStore } from '@aia/hydration';
 import { S3CookedBarStore } from '@aia/market-data';
-import type { Instrument } from '@aia/shared-kernel';
 
+import { liveProviderOf, rawProviderOf } from './feeds.js';
 import { RawMinuteSource } from './raw-minute-source.js';
-
-/**
- * Raw files are keyed by provider. Crypto history is backfilled from
- * Coinbase (M1-04); stocks will come from Massive (M1-07).
- */
-export function providerOf(instrument: Instrument): string {
-  return instrument.kind === 'crypto' ? 'coinbase' : 'massive';
-}
 
 export interface Stores {
   readonly endpoint: string;
@@ -25,8 +18,9 @@ export interface Stores {
   readonly minutes: RawMinuteSource;
 }
 
+/** Raw files are keyed by provider; the feed plan says which one per day. */
 export function localStores(
-  instruments: readonly Instrument[],
+  plan: FeedPlan,
   env: NodeJS.ProcessEnv = process.env,
 ): Stores {
   const endpoint = env['AIA_S3_ENDPOINT'] ?? 'http://127.0.0.1:9000';
@@ -41,12 +35,7 @@ export function localStores(
   };
   const raw = new S3RawBarStore({ ...s3, bucket: env['AIA_RAW_BUCKET'] ?? 'aia-raw' });
   const cooked = new S3CookedBarStore({ ...s3, bucket: env['AIA_COOKED_BUCKET'] ?? 'aia-cooked' });
-  const bySymbol = new Map(instruments.map((i) => [i.symbol, i]));
-  const minutes = new RawMinuteSource(raw, (symbol) => {
-    const instrument = bySymbol.get(symbol);
-    if (instrument === undefined) throw new Error(`No instrument for ${symbol}`);
-    return providerOf(instrument);
-  });
+  const minutes = new RawMinuteSource(raw, rawProviderOf(plan), liveProviderOf(plan));
   return { endpoint, raw, cooked, minutes };
 }
 

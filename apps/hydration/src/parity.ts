@@ -36,6 +36,7 @@ import {
 import type { Instrument, Timeframe } from '@aia/shared-kernel';
 import { TIMEFRAMES, isTimeframe, nyseCalendar } from '@aia/shared-kernel';
 
+import { loadFeedPlan } from './feeds.js';
 import { localStores } from './stores.js';
 
 const USAGE =
@@ -81,7 +82,7 @@ function parse(): Args {
 }
 
 async function fidelity(args: Args, exports: TradingViewExportSource): Promise<void> {
-  const { endpoint, cooked, minutes } = localStores(args.instruments);
+  const { endpoint, cooked, minutes } = localStores(loadFeedPlan());
 
   console.log(`SOURCE FIDELITY (reported only)   stores: ${endpoint}\n`);
   let results: ParityResult[];

@@ -46,3 +46,36 @@ export { GapRepair } from './application/gap-repair.js';
 export { expectedSpan, findHoles, holeRuns } from './domain/gaps.js';
 export { assertStorableFill, mergeDay } from './domain/raw-day.js';
 export { rawFillKey } from './adapters/s3-raw-bar-store.js';
+
+// Feed independence (CLAUDE.md rule 7): the plan says which provider serves
+// what, and the registry is the only place a provider name becomes an adapter.
+export type {
+  FeedPlan,
+  FeedSource,
+  HistorySegment,
+  HistorySource,
+  InstrumentFeeds,
+} from './domain/feed-plan.js';
+export {
+  FeedPlanError,
+  feedsFor,
+  historySegments,
+  historySourceOn,
+  historyStart,
+  liveSourceOn,
+  parseFeedPlan,
+} from './domain/feed-plan.js';
+export type { AdapterEntry, Env } from './adapters/registry.js';
+export { ADAPTERS, FeedAdapters, FeedSetupError } from './adapters/registry.js';
+
+// The live stream (M1-05).
+export type { LiveGap, LiveTrade, TradeOutcome } from './domain/live-minutes.js';
+export { LiveMinutesError, MinuteBuilder, minuteOf, splitGapByDay } from './domain/live-minutes.js';
+export type { LiveConnection, LiveFeedOptions, LiveSink, LiveTradesPort } from './application/live-trades-port.js';
+export type { LiveRawStorePort } from './application/live-raw-store-port.js';
+export { LiveMinuteAlreadyStoredError } from './application/live-raw-store-port.js';
+export type { Cancel, LiveEvent, LiveStreamDeps, LiveStreamOptions, Scheduler } from './application/live-stream.js';
+export { LiveStream } from './application/live-stream.js';
+export type { CoinbaseMessage, CoinbaseTradesOptions, SocketLike } from './adapters/coinbase/coinbase-trades.js';
+export { COINBASE_FEED_URL, CoinbaseTrades, parseFeedMessage } from './adapters/coinbase/coinbase-trades.js';
+export { rawLiveGapKey, rawLiveMinuteKey } from './adapters/s3-raw-bar-store.js';

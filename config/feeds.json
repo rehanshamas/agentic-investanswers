@@ -1,0 +1,29 @@
+{
+  "$comment": "Which provider serves each instrument (CLAUDE.md rule 7, docs/architecture.md 'Feed independence'). To switch a feed, add a source with the day it starts; never edit code. settleSeconds: how long a day must have ended before it is stored raw. Crypto: Coinbase, 1 hour (M1-04). Stocks: Massive, 2 days, because its newest day can still change (M1-07); its plan serves a rolling 2 years, nothing before 2024-11-11. Stocks have no live feed until OI-28.",
+  "instruments": [
+    {
+      "symbol": "BTCUSD",
+      "defaultFrom": "2024-11-01",
+      "history": [{ "provider": "coinbase", "settleSeconds": 3600 }],
+      "live": [{ "provider": "coinbase" }]
+    },
+    {
+      "symbol": "ETHUSD",
+      "defaultFrom": "2024-11-01",
+      "history": [{ "provider": "coinbase", "settleSeconds": 3600 }],
+      "live": [{ "provider": "coinbase" }]
+    },
+    {
+      "symbol": "NVDA",
+      "defaultFrom": "2024-11-11",
+      "history": [{ "provider": "massive", "from": "2024-11-11", "settleSeconds": 172800 }],
+      "live": []
+    },
+    {
+      "symbol": "TSLA",
+      "defaultFrom": "2024-11-11",
+      "history": [{ "provider": "massive", "from": "2024-11-11", "settleSeconds": 172800 }],
+      "live": []
+    }
+  ]
+}
