@@ -25,7 +25,7 @@ Read before planning: `docs/architecture.md`, `docs/bar-rules.md`, `docs/glossar
 - Added by later tasks: `pnpm parity` (M1-03), `pnpm rebuild-check` (M1-10), `pnpm freshness` (M2-07), `pnpm parity:indicators` (M3-03). Until they exist, say so instead of claiming they passed.
 
 ## Stack
-TypeScript on Node.js, pnpm + Nx, Vitest, Playwright. React + Lightweight Charts. Parquet (zstd) on S3; DynamoDB for user, access and agent data; ElastiCache Redis for hot bars. AWS CDK (TypeScript). Deferred for the MVP: gRPC/proto contracts, separate services.
+TypeScript on Node.js, pnpm + Nx, Vitest, Playwright. React + KLineChart (open source, Apache 2.0; no TradingView libraries, per the client). Parquet (zstd) on S3; DynamoDB for user, access and agent data; ElastiCache Redis for hot bars. AWS CDK (TypeScript). Deferred for the MVP: gRPC/proto contracts, separate services.
 
 ## Words
 Say "bar", "timeframe", "instrument", "market session", "indicator". Never "candle", "interval", or "model" for an indicator.
