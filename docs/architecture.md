@@ -30,4 +30,4 @@ The client must be able to change the source of any feed at any time with no har
 - Every request carries a principal (human or agent); plan checks run on every REST route and WebSocket subscription.
 
 ## Stack
-TypeScript on Node.js 22, pnpm + Nx, Vitest, Playwright, React + Lightweight Charts, AWS CDK (TypeScript).
+TypeScript on Node.js 22, pnpm + Nx, Vitest, Playwright, React + KLineChart (Apache 2.0; the client rules out TradingView libraries, including Lightweight Charts; its built-in indicators stay off, because indicators run server-side), AWS CDK (TypeScript).
