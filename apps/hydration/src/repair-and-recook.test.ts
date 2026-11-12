@@ -2,14 +2,13 @@
 // re-cooked. In memory, end to end through the real use cases.
 
 import type { HistoryProviderPort, RawDayRef } from '@aia/hydration';
-import { RawDayAlreadyStoredError, assertStorableFill, dayStart, mergeDay } from '@aia/hydration';
+import { RawDayAlreadyStoredError, RawMinuteSource, assertStorableFill, dayStart, mergeDay } from '@aia/hydration';
 import type { CookedBarStorePort } from '@aia/market-data';
 import { BTCUSD, CookIntraday, RebuildCheck, partitionOf, rebuildPassed } from '@aia/market-data';
 import type { Bar, Instrument, Timeframe } from '@aia/shared-kernel';
 import { barTime, barTimeFromUtcParts, nyseCalendar, price, volume } from '@aia/shared-kernel';
 import { describe, expect, it } from 'vitest';
 
-import { RawMinuteSource } from './raw-minute-source.js';
 import { repairAndRecook } from './repair-and-recook.js';
 
 function day(date: string): Bar[] {

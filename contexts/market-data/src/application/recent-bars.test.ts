@@ -134,8 +134,70 @@ describe('RecentBars', () => {
     expect(store.reads).toBe(2);
   });
 
+  it('reads the store when the cache cannot be reached', async () => {
+    const { cache, recent } = setup(fiveMinute);
+    const down = () => Promise.reject(new Error('ECONNREFUSED'));
+    cache.get = down;
+    cache.version = down;
+    cache.fill = down;
+    expect((await recent.read(BTC, '5m', { limit: 2, now })).map((b) => b.time)).toEqual([at(40), at(45)]);
+  });
+
   it('refuses a limit that is not a positive whole number', async () => {
     const { recent } = setup(fiveMinute);
     await expect(recent.read(BTC, '5m', { limit: 0, now })).rejects.toThrow(RecentBarsError);
+  });
+});
+
+describe('RecentBars.page', () => {
+  // Five-minute bars in two runs with a long hole between: minutes 0-45, then 2000-2045.
+  const early = Array.from({ length: 10 }, (_, i) => bar(i * 5));
+  const late = Array.from({ length: 10 }, (_, i) => bar(2_000 + i * 5));
+  const all = [...early, ...late];
+  const earliest = at(-60);
+  const now = at(2_047);
+
+  it('gives a full page and points next at its oldest bar', async () => {
+    const { recent } = setup(all);
+    const page = await recent.page(BTC, '5m', { limit: 4, now, earliest });
+    expect(page.bars.map((b) => b.time)).toEqual([at(2_030), at(2_035), at(2_040), at(2_045)]);
+    expect(page.next).toBe(at(2_030));
+  });
+
+  it('widens across a hole longer than one lookback to fill the page', async () => {
+    const { recent } = setup(all);
+    // 12 bars want 60 minutes of lookback; the hole is about 1,950 minutes.
+    const page = await recent.page(BTC, '5m', { limit: 12, now, earliest });
+    expect(page.bars.map((b) => b.time)).toEqual([at(40), at(45), ...late.map((b) => b.time)]);
+    expect(page.next).toBe(at(40));
+  });
+
+  it('walks every bar once, oldest page last, then reports the end', async () => {
+    const { recent } = setup(all);
+    const seen: number[] = [];
+    let before: BarTime | undefined;
+    for (let pages = 0; pages < 50; pages++) {
+      const page = await recent.page(BTC, '5m', { limit: 3, now, earliest, ...(before === undefined ? {} : { before }) });
+      seen.unshift(...page.bars.map((b) => b.time));
+      if (page.next === null) break;
+      before = page.next;
+    }
+    expect(seen).toEqual(all.map((b) => b.time));
+  });
+
+  it('stops at where history starts, with next null', async () => {
+    const { recent } = setup(all);
+    const page = await recent.page(BTC, '5m', { limit: 3, before: at(5), now, earliest });
+    expect(page.bars.map((b) => b.time)).toEqual([at(0)]);
+    expect(page.next).toBeNull();
+  });
+
+  it('keeps one request bounded over a very long hole, and says where to resume', async () => {
+    const { store, recent } = setup([bar(0), ...late]);
+    const page = await recent.page(BTC, '5m', { limit: 1, before: at(2_000), now, earliest: at(-1_000_000) });
+    expect(page.bars).toEqual([]);
+    expect(page.next).not.toBeNull();
+    expect(page.next as number).toBeLessThan(at(2_000));
+    expect(store.reads).toBeLessThanOrEqual(8);
   });
 });

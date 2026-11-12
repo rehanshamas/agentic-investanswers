@@ -6,6 +6,8 @@
 // window. Writers call `onBarClosed` after the store has the new bars, so the
 // cache never runs ahead of the store; if a cache write fails, the window is
 // dropped, so the next read refills it rather than serving a stale one.
+// The cache is only a shortcut: if it cannot be reached, reads go to the
+// store (M2-03), so a Redis outage slows charts rather than breaking them.
 //
 // The History API (M2-03) reads through this; M2-04's live gateway consumes
 // the same BarClosed events.
@@ -38,6 +40,21 @@ export interface RecentBarsQuery {
   readonly now: BarTime;
 }
 
+export interface RecentBarsPageQuery extends RecentBarsQuery {
+  /** Where the instrument's history starts; no page looks earlier. */
+  readonly earliest: BarTime;
+}
+
+export interface BarsPage {
+  /** Ascending; `limit` bars unless history ran out or the scan stopped. */
+  readonly bars: Bar[];
+  /** The `before` for the next older page, or `null` once history is exhausted. */
+  readonly next: BarTime | null;
+}
+
+/** Widenings per page: the last covers 64 `limit`s of timeframe lengths. */
+const PAGE_WIDENINGS = 6;
+
 export class RecentBars {
   private readonly capacity: number;
 
@@ -59,7 +76,7 @@ export class RecentBars {
     const lookback = lookbackStart(timeframe, until, limit);
     const symbol = instrument.symbol;
 
-    const window = await this.deps.cache.get(symbol, timeframe);
+    const window = await this.deps.cache.get(symbol, timeframe).catch(() => undefined);
     const hit = window === undefined ? undefined : readWindow(window, limit, before, lookback);
     if (hit !== undefined) return hit;
 
@@ -69,6 +86,42 @@ export class RecentBars {
     }
     const bars = await this.fromStore(symbol, timeframe, lookback, until);
     return bars.slice(Math.max(bars.length - limit, 0));
+  }
+
+  /**
+   * One page of history for the History API (M2-03): the newest `limit` bars
+   * before `before`, and the `before` to ask for next.
+   *
+   * `read` looks back `limit` timeframe lengths, which can hold fewer bars
+   * across closed market sessions or missing history. A page widens the look
+   * back, doubling, until it has `limit` bars or reaches `earliest` (where the
+   * instrument's history starts), reading only the newly covered range each
+   * time. It stops after a few widenings so one request stays bounded; `next`
+   * then points at where it stopped, and the page may hold fewer bars, even
+   * none. `next` is `null` only once the page reaches `earliest`.
+   */
+  async page(instrument: Instrument, timeframe: Timeframe, query: RecentBarsPageQuery): Promise<BarsPage> {
+    const { limit, before, now, earliest } = query;
+    let bars = await this.read(instrument, timeframe, { limit, now, ...(before === undefined ? {} : { before }) });
+    if (bars.length >= limit) return { bars, next: (bars[0] as Bar).time };
+
+    const until = before === undefined ? now : barTime(before - 1);
+    let span = limit;
+    // Everything from `low` to `until` has been read. The read may have come
+    // from a wider refill, so its oldest bar can sit below its own lookback.
+    let low = barTime(Math.min(lookbackStart(timeframe, until, span), bars[0]?.time ?? Infinity));
+    for (let round = 0; round < PAGE_WIDENINGS && bars.length < limit && low > earliest; round++) {
+      span *= 2;
+      const from = barTime(Math.max(lookbackStart(timeframe, until, span), earliest));
+      const older = await this.fromStore(instrument.symbol, timeframe, from, barTime(low - 1));
+      bars = [...older, ...bars];
+      low = from;
+    }
+    if (bars.length >= limit) {
+      const page = bars.slice(bars.length - limit);
+      return { bars: page, next: (page[0] as Bar).time };
+    }
+    return { bars, next: low > earliest ? low : null };
   }
 
   /**
@@ -100,7 +153,7 @@ export class RecentBars {
 
   /** Read the newest `capacity` bars' lookback from the store and make it the window. */
   private async refill(symbol: string, timeframe: Timeframe, now: BarTime): Promise<Bar[]> {
-    const version = await this.deps.cache.version(symbol, timeframe);
+    const version = await this.deps.cache.version(symbol, timeframe).catch(() => undefined);
     const from = lookbackStart(timeframe, now, this.capacity);
     const bars = await this.fromStore(symbol, timeframe, from, now);
     const kept = bars.slice(Math.max(bars.length - this.capacity, 0));
@@ -108,7 +161,9 @@ export class RecentBars {
     // If a bar changed during the read, the fill is refused (the window would
     // miss it) and the next read tries again; this answer is still the store
     // as it was read.
-    await this.deps.cache.fill(symbol, timeframe, { from: start, bars: kept }, version);
+    if (version !== undefined) {
+      await this.deps.cache.fill(symbol, timeframe, { from: start, bars: kept }, version).catch(() => false);
+    }
     return kept;
   }
 

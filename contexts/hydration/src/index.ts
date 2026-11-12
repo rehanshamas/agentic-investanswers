@@ -79,3 +79,7 @@ export { LiveStream } from './application/live-stream.js';
 export type { CoinbaseMessage, CoinbaseTradesOptions, SocketLike } from './adapters/coinbase/coinbase-trades.js';
 export { COINBASE_FEED_URL, CoinbaseTrades, parseFeedMessage } from './adapters/coinbase/coinbase-trades.js';
 export { rawLiveGapKey, rawLiveMinuteKey } from './adapters/s3-raw-bar-store.js';
+
+export type { ProviderOf } from './application/raw-minute-source.js';
+export { RawMinuteSource, liveProviderOf, rawProviderOf } from './application/raw-minute-source.js';
+export { loadFeedPlan } from './adapters/feed-plan-file.js';

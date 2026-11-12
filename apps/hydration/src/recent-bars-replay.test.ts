@@ -16,7 +16,7 @@ import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 
 import type { Cancel, LiveRawStorePort, RawDayRef, Scheduler, SocketLike } from '@aia/hydration';
-import { CoinbaseTrades, LiveStream } from '@aia/hydration';
+import { CoinbaseTrades, LiveStream, RawMinuteSource } from '@aia/hydration';
 import type { CookedBarStorePort, RecentBarsCachePort } from '@aia/market-data';
 import {
   CookIntraday,
@@ -32,7 +32,6 @@ import type { Bar, BarTime, Instrument, Timeframe } from '@aia/shared-kernel';
 import { barTime } from '@aia/shared-kernel';
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { RawMinuteSource } from './raw-minute-source.js';
 
 // The recording belongs to the hydration context's tests; read as data, not imported.
 const RECORDING = new URL('../../../contexts/hydration/test-data/coinbase-matches-2026-11-10.jsonl.gz', import.meta.url);

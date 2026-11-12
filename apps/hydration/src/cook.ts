@@ -17,12 +17,12 @@
 
 import { parseArgs } from 'node:util';
 
+import { loadFeedPlan } from '@aia/hydration';
 import { CRYPTO_PARITY_INSTRUMENTS, CookIntraday, parityInstrument } from '@aia/market-data';
 import type { Instrument } from '@aia/shared-kernel';
 import { nyseCalendar } from '@aia/shared-kernel';
 
 import { dropCachedWindows } from './cache.js';
-import { loadFeedPlan } from './feeds.js';
 import { localStores, monthsBetween } from './stores.js';
 
 const DEFAULT_FROM = '2024-11-01';

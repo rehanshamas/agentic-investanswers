@@ -21,13 +21,13 @@
 import { parseArgs } from 'node:util';
 
 import type { BackfillReport, DayOutcome } from '@aia/hydration';
-import { Backfill, FeedPlanError, FeedSetupError, feedsFor, historySegments, historyStart } from '@aia/hydration';
+import { Backfill, FeedPlanError, FeedSetupError, feedsFor, historySegments, historyStart, loadFeedPlan } from '@aia/hydration';
 import { CRYPTO_PARITY_INSTRUMENTS, parityInstrument } from '@aia/market-data';
 import type { Instrument } from '@aia/shared-kernel';
 import { barTime, isTradingDay, nyseCalendar } from '@aia/shared-kernel';
 
 import { dropCachedWindows } from './cache.js';
-import { feedAdapters, loadFeedPlan } from './feeds.js';
+import { feedAdapters } from './feeds.js';
 import { localStores } from './stores.js';
 
 function usage(message: string): never {

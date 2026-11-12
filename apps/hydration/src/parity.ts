@@ -21,6 +21,7 @@
 
 import { parseArgs } from 'node:util';
 
+import { loadFeedPlan } from '@aia/hydration';
 import type { ParityResult } from '@aia/market-data';
 import {
   CRYPTO_PARITY_INSTRUMENTS,
@@ -36,7 +37,6 @@ import {
 import type { Instrument, Timeframe } from '@aia/shared-kernel';
 import { TIMEFRAMES, isTimeframe, nyseCalendar } from '@aia/shared-kernel';
 
-import { loadFeedPlan } from './feeds.js';
 import { localStores } from './stores.js';
 
 const USAGE =

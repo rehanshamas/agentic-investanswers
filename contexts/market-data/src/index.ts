@@ -84,8 +84,19 @@ export type { RecentWindow } from './domain/recent-window.js';
 export { RECENT_BARS_CAPACITY, RecentWindowError } from './domain/recent-window.js';
 export type { RecentBarsCachePort } from './application/recent-bars-cache-port.js';
 export { RecentBarsCacheError } from './application/recent-bars-cache-port.js';
-export type { RecentBarsDeps, RecentBarsQuery } from './application/recent-bars.js';
+export type { BarsPage, RecentBarsDeps, RecentBarsPageQuery, RecentBarsQuery } from './application/recent-bars.js';
 export { RecentBars, RecentBarsError } from './application/recent-bars.js';
 export { MemoryRecentBarsCache } from './adapters/memory-recent-bars-cache.js';
 export type { RedisCacheOptions } from './adapters/redis-recent-bars-cache.js';
 export { RedisRecentBarsCache } from './adapters/redis-recent-bars-cache.js';
+
+export { whyNotServed } from './domain/served.js';
+export type {
+  HistoryBar,
+  HistoryError,
+  HistoryErrorCode,
+  HistoryQueryDeps,
+  HistoryRequest,
+  HistoryResponse,
+} from './application/history-query.js';
+export { HISTORY_DEFAULT_LIMIT, HISTORY_MAX_LIMIT, HistoryQuery } from './application/history-query.js';

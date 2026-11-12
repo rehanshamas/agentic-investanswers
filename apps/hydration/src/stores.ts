@@ -5,11 +5,9 @@
 // overridden by environment variable for staging.
 
 import type { FeedPlan } from '@aia/hydration';
-import { S3RawBarStore } from '@aia/hydration';
+import { RawMinuteSource, S3RawBarStore, liveProviderOf, rawProviderOf } from '@aia/hydration';
 import { S3CookedBarStore } from '@aia/market-data';
 
-import { liveProviderOf, rawProviderOf } from './feeds.js';
-import { RawMinuteSource } from './raw-minute-source.js';
 
 export interface Stores {
   readonly endpoint: string;
