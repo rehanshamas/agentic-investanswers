@@ -128,6 +128,12 @@ export class LiveGateway implements LiveBarsListener {
   }
 
   batch(batch: LiveBatch): void {
+    // A resync on its own from another publisher (a maintenance command that
+    // rewrote bars) leaves the live publisher's sequence alone.
+    if (batch.resync === true && batch.updates.length === 0 && this.last !== undefined && batch.publisher !== this.last.publisher) {
+      this.resyncAll();
+      return;
+    }
     const last = this.last;
     this.last = { publisher: batch.publisher, seq: batch.seq };
     if (last !== undefined && (batch.publisher !== last.publisher || batch.seq !== last.seq + 1)) {

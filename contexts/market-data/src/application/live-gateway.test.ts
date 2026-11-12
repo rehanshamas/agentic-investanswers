@@ -249,9 +249,13 @@ describe('LiveGateway: gaps and slow clients', () => {
     record();
     gateway.batch({ publisher: 'q', seq: 8, updates: [], resync: true });
     record();
-    expect(events).toEqual(['-', '-', 'resync', 'resync', 'resync', '-', 'resync']);
+    gateway.batch({ publisher: 'maintenance', seq: 1, updates: [], resync: true }); // pnpm cook rewrote bars
+    record();
+    gateway.batch({ publisher: 'q', seq: 9, updates: [] }); // the live sequence carries on: no second resync
+    record();
+    expect(events).toEqual(['-', '-', 'resync', 'resync', 'resync', '-', 'resync', 'resync', '-']);
     // The update that came with the jump is still delivered, after the resync.
-    gateway.batch({ publisher: 'q', seq: 9, updates: [update('BTCUSD', '1m', bar(1))] });
+    gateway.batch({ publisher: 'q', seq: 10, updates: [update('BTCUSD', '1m', bar(1))] });
     flush();
     expect(socket.take().map((m) => m.type)).toEqual(['bars']);
   });
