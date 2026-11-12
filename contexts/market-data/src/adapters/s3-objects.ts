@@ -7,7 +7,9 @@
 // staging by leaving both unset (docs/architecture.md).
 
 import {
+  CreateBucketCommand,
   GetObjectCommand,
+  HeadBucketCommand,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -124,5 +126,15 @@ export async function exists(client: S3Client, bucket: string, key: string): Pro
   } catch (error) {
     if (isNotFound(error)) return false;
     throw error;
+  }
+}
+
+/** Create the bucket if it does not exist (local stand-ins and load tests; staging creates buckets in CDK). */
+export async function ensureBucket(client: S3Client, bucket: string): Promise<void> {
+  try {
+    await client.send(new HeadBucketCommand({ Bucket: bucket }));
+  } catch (error) {
+    if (!isNotFound(error)) throw error;
+    await client.send(new CreateBucketCommand({ Bucket: bucket }));
   }
 }

@@ -17,6 +17,7 @@
     "live": "tsx --env-file-if-exists=.env apps/hydration/src/live.ts",
     "cook": "tsx apps/hydration/src/cook.ts",
     "rebuild-check": "tsx apps/hydration/src/rebuild-check.ts",
+    "load-hydration": "tsx --env-file-if-exists=.env apps/hydration/src/load-hydration.ts",
     "platform": "tsx --env-file-if-exists=.env apps/platform/src/main.ts",
     "load-live": "tsx --env-file-if-exists=.env apps/platform/src/load-live.ts",
     "owner-inputs": "node scripts/owner-inputs.mjs",

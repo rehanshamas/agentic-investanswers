@@ -14,7 +14,7 @@ import {
 } from '../domain/cooked-partition.js';
 import { decodeBars, encodeBars } from './parquet-bars.js';
 import type { S3StoreConfig } from './s3-objects.js';
-import { createS3Client, get, put } from './s3-objects.js';
+import { createS3Client, ensureBucket, get, put } from './s3-objects.js';
 
 /** `cooked/<symbol>/<token>/<partition>.parquet`, with the lower-case token. */
 export function cookedKey(symbol: string, timeframe: Timeframe, partition: string): string {
@@ -28,6 +28,11 @@ export class S3CookedBarStore implements CookedBarStorePort {
   constructor(config: S3StoreConfig, client?: S3Client) {
     this.client = client ?? createS3Client(config);
     this.bucket = config.bucket;
+  }
+
+  /** Create the bucket if it does not exist. */
+  ensureBucket(): Promise<void> {
+    return ensureBucket(this.client, this.bucket);
   }
 
   async put(symbol: string, timeframe: Timeframe, bars: readonly Bar[]): Promise<void> {
