@@ -1,8 +1,8 @@
 // M2-04: live updates for charts, end to end on the recorded Coinbase stream.
 //
 // The recording (BTC-USD and ETH-USD, 32 minutes) is replayed through the real
-// adapter, LiveStream, raw, cooking, the recent-bars cache and FormingBars,
-// wired as `pnpm live` wires them, and every announcement is captured from the
+// adapter, LiveStream and `pnpm live`'s own LivePipeline (raw, cooking, the
+// recent-bars cache, FormingBars), and every announcement is captured from the
 // bus. It checks the safety rules:
 // - a stored bar is announced only after the cache has it;
 // - a chart applying every announcement in order ends equal to the store for
@@ -13,19 +13,11 @@
 
 import { CoinbaseTrades, LiveStream, RawMinuteSource } from '@aia/hydration';
 import type { LiveBarUpdate, LiveBatch, RecentBarsCachePort } from '@aia/market-data';
-import {
-  CookIntraday,
-  FormingBars,
-  INTRADAY_ROLLUPS,
-  LiveAnnouncer,
-  MemoryLiveBarsBus,
-  MemoryRecentBarsCache,
-  RecentBars,
-  barClosedEvents,
-} from '@aia/market-data';
-import type { Bar, Instrument, Timeframe } from '@aia/shared-kernel';
+import { MemoryLiveBarsBus, MemoryRecentBarsCache } from '@aia/market-data';
+import type { Bar, Timeframe } from '@aia/shared-kernel';
 import { describe, expect, it } from 'vitest';
 
+import { LivePipeline } from './live-pipeline.js';
 import {
   INSTRUMENTS,
   MemoryCookedStore,
@@ -53,7 +45,6 @@ async function replay() {
     () => 'coinbase',
   );
   const cooked = new MemoryCookedStore();
-  const cook = new CookIntraday({ source: minutes, store: cooked });
 
   // One log for cache writes and announcements, in the order they happen.
   const log: Logged[] = [];
@@ -68,35 +59,29 @@ async function replay() {
       log.push({ kind: 'cached', key: slot(s, tf, bar) });
     },
   };
-  const recent = new RecentBars({ cache, store: cooked, minutes });
   const bus = new MemoryLiveBarsBus();
   await bus.subscribe({ batch: (batch) => log.push({ kind: 'announced', batch }), lost: () => {} });
-  const announcer = new LiveAnnouncer(bus, 'replay');
-  const forming = new Map(INSTRUMENTS.map((i) => [i.symbol, new FormingBars(i, INTRADAY_ROLLUPS)]));
-
-  // As `pnpm live`: forming bars at once; per symbol in order, cook the
-  // minute, update the cache, then announce the stored bars.
-  let chain: Promise<void> = Promise.resolve();
+  // `pnpm live`'s own pipeline: forming bars at once; per symbol in order,
+  // cook the minute, update the cache, then announce the stored bars.
+  const pipeline = new LivePipeline({
+    instruments: INSTRUMENTS,
+    raw: { getDay: () => Promise.resolve(undefined), getLiveMinutes: (ref) => raw.getLiveMinutes(ref) },
+    rawProviderOf: () => undefined,
+    liveProviderOf: () => 'coinbase',
+    cooked,
+    cache,
+    bus,
+    publisher: 'replay',
+    log: () => {},
+  });
   const stream = new LiveStream(
     {
       feed: new CoinbaseTrades({ socket: () => socket, now: () => clock.now() }),
       store: raw,
       scheduler: clock,
       onEvent: (event) => {
-        if (event.kind === 'forming') {
-          void announcer.publish(forming.get(event.symbol)?.unstoredChanged(event.bars) ?? []);
-          return;
-        }
-        if (event.kind !== 'minute') return;
-        const instrument = INSTRUMENTS.find((i) => i.symbol === event.symbol) as Instrument;
-        const bars = forming.get(event.symbol) as FormingBars;
-        bars.stored(event.bar);
-        chain = chain
-          .then(() => cook.applyNewMinutesToAll(instrument, [event.bar]))
-          .then(async (rebuilt) => {
-            await recent.onBarClosed(barClosedEvents(event.symbol, event.bar, rebuilt));
-            await announcer.publish(bars.cooked(event.bar, rebuilt));
-          });
+        if (event.kind === 'forming') pipeline.formingChanged(event.symbol, event.bars);
+        if (event.kind === 'minute') void pipeline.minute('coinbase', event.symbol, event.bar);
       },
     },
     INSTRUMENTS,
@@ -111,7 +96,7 @@ async function replay() {
   }
   clock.advance((messages.at(-1)?.t ?? 0) + 3_000);
   await stream.stop();
-  await chain;
+  await pipeline.settled();
   const seconds_ = ((messages.at(-1)?.t ?? 0) - (messages[0]?.t ?? 0)) / 1000;
   return { log, cooked, minutes, end: seconds(clock.now()), seconds: seconds_ };
 }

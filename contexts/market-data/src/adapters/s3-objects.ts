@@ -19,16 +19,33 @@ export interface S3StoreConfig {
   readonly endpoint?: string;
   readonly region?: string;
   readonly credentials?: { readonly accessKeyId: string; readonly secretAccessKey: string };
+  /**
+   * Told about every request: the S3 command and, for uploads, the bytes sent.
+   * For measuring (M1-15's load test); nothing else depends on it.
+   */
+  readonly observe?: (command: string, bytes: number) => void;
 }
 
 export class S3ObjectError extends Error {}
 
 export function createS3Client(config: S3StoreConfig): S3Client {
-  return new S3Client({
+  const client = new S3Client({
     region: config.region ?? 'us-east-1',
     ...(config.endpoint === undefined ? {} : { endpoint: config.endpoint, forcePathStyle: true }),
     ...(config.credentials === undefined ? {} : { credentials: config.credentials }),
   });
+  const observe = config.observe;
+  if (observe !== undefined) {
+    client.middlewareStack.add(
+      (next, context) => (args) => {
+        const body = (args.input as { Body?: unknown }).Body;
+        observe(context.commandName ?? 'unknown', body instanceof Uint8Array ? body.byteLength : 0);
+        return next(args);
+      },
+      { step: 'initialize', name: 'aiaObserve' },
+    );
+  }
+  return client;
 }
 
 function isNotFound(error: unknown): boolean {

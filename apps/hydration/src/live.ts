@@ -24,34 +24,24 @@ import { randomUUID } from 'node:crypto';
 import { appendFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 
-import type { LiveEvent, RawDayRef, Scheduler } from '@aia/hydration';
+import type { LiveEvent, Scheduler } from '@aia/hydration';
 import {
   FeedPlanError,
   FeedSetupError,
   LiveStream,
-  RawMinuteSource,
   feedsFor,
   liveProviderOf,
   liveSourceOn,
   loadFeedPlan,
   rawProviderOf,
 } from '@aia/hydration';
-import type { LiveBarUpdate } from '@aia/market-data';
-import {
-  CookIntraday,
-  FormingBars,
-  INTRADAY_ROLLUPS,
-  LiveAnnouncer,
-  PARITY_INSTRUMENTS,
-  RecentBars,
-  barClosedEvents,
-  parityInstrument,
-} from '@aia/market-data';
-import type { Bar, Instrument, Timeframe } from '@aia/shared-kernel';
-import { formatScaled, nyseCalendar, rawPriceScale, rawVolumeScale, zonedDateKey } from '@aia/shared-kernel';
+import { PARITY_INSTRUMENTS, parityInstrument } from '@aia/market-data';
+import type { Bar, Instrument } from '@aia/shared-kernel';
+import { formatScaled, nyseCalendar, rawPriceScale, rawVolumeScale } from '@aia/shared-kernel';
 
-import { CACHED_TIMEFRAMES, connectCache, connectLiveBus } from './cache.js';
+import { connectCache, connectLiveBus } from './cache.js';
 import { feedAdapters } from './feeds.js';
+import { LivePipeline } from './live-pipeline.js';
 import { localStores } from './stores.js';
 
 const USAGE = 'Usage: pnpm live [--symbol S]... [--record FILE]';
@@ -112,29 +102,6 @@ async function main(): Promise<void> {
   const stores = localStores(feedPlan);
   const bySymbol = new Map(instruments.map((i) => [i.symbol, i]));
 
-  // Today's live minutes, held in memory once read, so cooking each new minute
-  // does not list the day's objects again. Seeded from the store on first use.
-  const liveCache = new Map<string, Promise<Bar[]>>();
-  const cacheKey = (ref: RawDayRef) => `${ref.provider}/${ref.symbol}/${ref.date}`;
-  const cachedRaw = {
-    getDay: (ref: RawDayRef) => stores.raw.getDay(ref),
-    getLiveMinutes: (ref: RawDayRef) => {
-      const key = cacheKey(ref);
-      let minutes = liveCache.get(key);
-      if (minutes === undefined) {
-        minutes = stores.raw.getLiveMinutes(ref);
-        liveCache.set(key, minutes);
-      }
-      return minutes;
-    },
-  };
-  const cook = new CookIntraday({
-    source: new RawMinuteSource(cachedRaw, rawProviderOf(feedPlan), liveProviderOf(feedPlan)),
-    store: stores.cooked,
-    calendar: nyseCalendar(),
-  });
-  const cooking = new Map<string, Promise<void>>();
-
   let cache;
   try {
     cache = await connectCache({
@@ -145,22 +112,6 @@ async function main(): Promise<void> {
     usage(`Redis is unreachable (${String(error)}); the recent-bars cache must follow every minute. Run: docker compose up -d`);
   }
   const redis = cache;
-  const recent = new RecentBars({ cache: redis, store: stores.cooked, minutes: stores.minutes });
-  // Symbols whose cached windows may have missed an update while Redis was
-  // unreachable. Their windows are dropped before the next update is applied.
-  const staleCache = new Set<string>();
-  const updateCache = async (symbol: string, minute: Bar, rebuilt: Map<Timeframe, Bar[]>): Promise<void> => {
-    try {
-      if (staleCache.has(symbol)) {
-        await recent.invalidate(symbol, CACHED_TIMEFRAMES);
-        staleCache.delete(symbol);
-      }
-      await recent.onBarClosed(barClosedEvents(symbol, minute, rebuilt));
-    } catch (error) {
-      staleCache.add(symbol);
-      throw error;
-    }
-  };
 
   // Live updates for charts (M2-04). One announcer, so announcements keep the
   // order they were made in; a restart is a new publisher, which charts resync on.
@@ -171,17 +122,18 @@ async function main(): Promise<void> {
     usage(`Redis is unreachable (${String(error)}); live updates for charts go through it. Run: docker compose up -d`);
   }
   const liveBus = bus;
-  const announcer = new LiveAnnouncer(liveBus, `live-${randomUUID()}`);
-  const announce = (updates: readonly LiveBarUpdate[]): void => {
-    announcer.publish(updates).catch((error: unknown) => console.log(`live announcement failed (charts resync on the next): ${String(error)}`));
-  };
-  const resync = (why: string): void => {
-    announcer.resync().catch((error: unknown) => console.log(`live resync (${why}) failed to send: ${String(error)}`));
-  };
-  // Stocks are not cooked until M1-08, so only their 1m bar forms.
-  const forming = new Map(
-    instruments.map((i) => [i.symbol, new FormingBars(i, i.kind === 'stock' ? [] : INTRADAY_ROLLUPS, nyseCalendar())]),
-  );
+  const pipeline = new LivePipeline({
+    instruments,
+    raw: stores.raw,
+    rawProviderOf: rawProviderOf(feedPlan),
+    liveProviderOf: liveProviderOf(feedPlan),
+    cooked: stores.cooked,
+    cache: redis,
+    bus: liveBus,
+    publisher: `live-${randomUUID()}`,
+    calendar: nyseCalendar(),
+    log: (line) => console.log(`${new Date().toISOString().slice(11, 19)} ${line}`),
+  });
 
   const record = values.record;
   const onEvent = (provider: string) => (event: LiveEvent) => {
@@ -192,9 +144,10 @@ async function main(): Promise<void> {
         return;
       case 'disconnected':
         console.log(`${stamp} ${provider}: disconnected (${event.reason}); retrying in ${(event.retryInMs / 1000).toFixed(1)} s`);
-        // The forming minutes will never be stored: charts must drop them.
-        for (const instrument of instruments) if (liveToday(instrument) === provider) forming.get(instrument.symbol)?.reset();
-        resync(`${provider} disconnected`);
+        pipeline.disconnected(
+          instruments.filter((i) => liveToday(i) === provider).map((i) => i.symbol),
+          `${provider} disconnected`,
+        );
         return;
       case 'gap':
         console.log(`${stamp} ${event.symbol}: gap recorded ${hhmm(event.gap.from)} to ${hhmm(event.gap.until)} (gap repair fills it once the day is backfilled)`);
@@ -204,60 +157,16 @@ async function main(): Promise<void> {
         return;
       case 'write-failed':
         console.log(`${stamp} ${event.symbol}: FAILED to store ${event.what}: ${event.error}`);
-        resync(`${event.symbol} write failed`);
+        pipeline.writeFailed(event.symbol);
         return;
       case 'forming':
-        announce(forming.get(event.symbol)?.unstoredChanged(event.bars) ?? []);
+        pipeline.formingChanged(event.symbol, event.bars);
         return;
       case 'minute': {
         const instrument = bySymbol.get(event.symbol);
         if (instrument === undefined) return;
-        const bars = forming.get(event.symbol);
-        bars?.stored(event.bar);
-        // The stored bars go out only once the cache has them.
-        const cachedThenAnnounce = (rebuilt: Map<Timeframe, Bar[]>) =>
-          updateCache(event.symbol, event.bar, rebuilt).then(
-            () => announce(bars?.cooked(event.bar, rebuilt) ?? []),
-            (error: unknown) => {
-              resync(`${event.symbol} cache update failed`);
-              throw error;
-            },
-          );
-        const ref = { provider, symbol: event.symbol, date: zonedDateKey(event.bar.time, 'UTC') };
-        void cachedRaw.getLiveMinutes(ref).then((minutes) => {
-          if (!minutes.some((b) => b.time === event.bar.time)) minutes.push(event.bar);
-        });
         console.log(`${stamp} ${event.symbol} ${hhmm(event.bar.time)} ${describe(instrument, event.bar)}`);
-        const previous = cooking.get(event.symbol) ?? Promise.resolve();
-        // Stocks are not cooked until M1-08, so only their 1m window follows;
-        // none streams yet anyway (OI-28).
-        if (instrument.kind === 'stock') {
-          cooking.set(
-            event.symbol,
-            previous
-              .then(() => cachedThenAnnounce(new Map()))
-              .catch((error: unknown) => console.log(`${stamp} ${event.symbol}: cache update failed: ${String(error)}`)),
-          );
-          return;
-        }
-        cooking.set(
-          event.symbol,
-          previous
-            .then(() => cachedRaw.getLiveMinutes(ref))
-            .then(() => cook.applyNewMinutesToAll(instrument, [event.bar]))
-            .then(
-              (rebuilt) =>
-                cachedThenAnnounce(rebuilt).catch((error: unknown) =>
-                  console.log(`${stamp} ${event.symbol}: cache update failed, its windows are dropped once Redis is back: ${String(error)}`),
-                ),
-              (error: unknown) => {
-                // The minute is in raw but its bars are not cooked, so cached windows are behind the store.
-                staleCache.add(event.symbol);
-                resync(`${event.symbol} cooking failed`);
-                console.log(`${stamp} ${event.symbol}: cooking failed: ${String(error)}`);
-              },
-            ),
-        );
+        void pipeline.minute(provider, event.symbol, event.bar);
         return;
       }
     }
@@ -303,7 +212,7 @@ async function main(): Promise<void> {
     clearInterval(checkPlan);
     console.log('Stopping; minutes not yet closed are not written.');
     void Promise.all(running.map(({ stream }) => stream.stop()))
-      .then(() => Promise.all(cooking.values()))
+      .then(() => pipeline.settled())
       .then(() => redis.close())
       .then(() => liveBus.close())
       .then(() => process.exit(0));
