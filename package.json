@@ -18,6 +18,7 @@
     "cook": "tsx apps/hydration/src/cook.ts",
     "rebuild-check": "tsx apps/hydration/src/rebuild-check.ts",
     "platform": "tsx --env-file-if-exists=.env apps/platform/src/main.ts",
+    "load-live": "tsx --env-file-if-exists=.env apps/platform/src/load-live.ts",
     "owner-inputs": "node scripts/owner-inputs.mjs",
     "status": "node scripts/status.mjs"
   },
