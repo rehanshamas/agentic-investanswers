@@ -49,6 +49,12 @@ export interface LivePipelineDeps {
   readonly log: (line: string) => void;
   /** Epoch milliseconds. */
   readonly nowMs: () => number;
+  /**
+   * How many instruments compact at once. Default 4: at midnight every
+   * instrument has a day to write, and compaction must not compete with the
+   * live minutes for the store.
+   */
+  readonly compactionConcurrency?: number;
 }
 
 const DAY = 86_400;
@@ -63,6 +69,9 @@ export class LivePipeline {
   /** Per instrument, the UTC day compaction last ran for, and the run in progress. */
   private readonly compacted = new Map<string, number>();
   private readonly compacting = new Map<string, Promise<void>>();
+  /** Compactions waiting for a slot, and how many run now. */
+  private readonly compactionQueue: Array<() => void> = [];
+  private compactionsRunning = 0;
   private readonly recent: RecentBars;
   private readonly announcer: LiveAnnouncer;
   /** Per instrument, its minutes in order. */
@@ -180,19 +189,39 @@ export class LivePipeline {
     const symbol = instrument.symbol;
     const today = Math.floor(minute.time / DAY) * DAY;
     if ((this.compacted.get(symbol) ?? -1) >= today || this.compacting.has(symbol)) return;
-    const started = this.deps.nowMs();
-    const run = this.compactor
-      .compact(instrument, barTime(today))
+    const run = this.compactionSlot()
+      .then(() => {
+        const started = this.deps.nowMs();
+        return this.compactor.compact(instrument, barTime(today)).then((days) => ({ days, started }));
+      })
       .then(
-        (days) => {
+        ({ days, started }) => {
           this.compacted.set(symbol, today);
           if (days > 0) this.deps.log(`${symbol}: ${days} settled day(s) written to the cooked store in ${this.deps.nowMs() - started} ms`);
         },
         // Readers roll up everything past the watermark, so a late compaction slows reads, never breaks them.
         (error: unknown) => this.deps.log(`${symbol}: compaction failed, retried on the next minute: ${String(error)}`),
       )
-      .finally(() => this.compacting.delete(symbol));
+      .finally(() => {
+        this.compacting.delete(symbol);
+        this.compactionsRunning--;
+        this.compactionQueue.shift()?.();
+      });
     this.compacting.set(symbol, run);
+  }
+
+  /** Resolves when fewer than `compactionConcurrency` compactions run; the caller then holds a slot. */
+  private compactionSlot(): Promise<void> {
+    if (this.compactionsRunning < (this.deps.compactionConcurrency ?? 4)) {
+      this.compactionsRunning++;
+      return Promise.resolve();
+    }
+    return new Promise((resolve) =>
+      this.compactionQueue.push(() => {
+        this.compactionsRunning++;
+        resolve();
+      }),
+    );
   }
 
   /** Every minute handed in so far is done, and any compaction it set off. */

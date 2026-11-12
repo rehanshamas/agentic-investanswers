@@ -171,6 +171,7 @@ async function main(): Promise<void> {
   }
 
   const errors: string[] = [];
+  const compactions: Array<{ at: number; ms: number }> = [];
   const pipeline = new LivePipeline({
     instruments,
     raw,
@@ -181,7 +182,11 @@ async function main(): Promise<void> {
     cache: countingCache(cache),
     bus: { publish: (batch) => (count('redis'), bus.publish(batch)) },
     publisher: `load-${run}`,
-    log: (line) => (line.includes('failed') ? errors.push(line) : console.log(`  ${line}`)),
+    log: (line) => {
+      if (line.includes('failed')) errors.push(line);
+      else if (line.includes('settled day')) compactions.push({ at: performance.now(), ms: Number(/in (\d+) ms/.exec(line)?.[1] ?? 0) });
+      else console.log(`  ${line}`);
+    },
     nowMs: () => Date.now(),
   });
 
@@ -201,8 +206,7 @@ async function main(): Promise<void> {
     `${n(INSTRUMENTS)} instruments, ${MINUTES} minutes, a minute every ${MINUTE_MS / 1000} s, from 2026-11-${String(DAY).padStart(2, '0')} 23:58 (run ${run})\n`,
   );
   console.log('minute    p50 ms  p95 ms  max ms  raw PUT  raw GET raw LIST  ckd GET  ckd PUT  ckd MB up  redis');
-  const steady: Counts = new Map();
-  const steadyTimes: number[] = [];
+  const minutesSeen: Array<{ counts: Counts; times: number[]; start: number; dayChange: boolean }> = [];
   let fellBehind = false;
   const started = performance.now();
   for (let k = 0; k < MINUTES; k++) {
@@ -218,42 +222,73 @@ async function main(): Promise<void> {
         return performance.now() - closed;
       }),
     );
+    // Counted up to the next minute's close, so background compaction lands in the minute it ran in.
+    const nextClose = started + (k + 1) * MINUTE_MS;
+    if (k < MINUTES - 1 && nextClose > performance.now()) await new Promise((resolve) => setTimeout(resolve, nextClose - performance.now() - 5));
     const c = take();
-    console.log(row(k === 0 ? `${k + 1} (start)` : time % 86_400 === 0 ? `${k + 1} (00:00)` : `${k + 1}`, c, times));
-    if ((times.reduce((a, b) => Math.max(a, b), 0)) > MINUTE_MS) fellBehind = true;
-    if (k > 0 || MINUTES === 1) {
-      for (const [key, v] of c) {
-        const e = steady.get(key) ?? { requests: 0, bytes: 0 };
-        e.requests += v.requests;
-        e.bytes += v.bytes;
-        steady.set(key, e);
-      }
-      steadyTimes.push(...times);
-    }
+    const dayChange = time % 86_400 === 0;
+    console.log(row(k === 0 ? `${k + 1} (start)` : dayChange ? `${k + 1} (00:00)` : `${k + 1}`, c, times));
+    if (times.reduce((a, b) => Math.max(a, b), 0) > MINUTE_MS) fellBehind = true;
+    minutesSeen.push({ counts: c, times, start: closed, dayChange });
   }
   await pipeline.settled();
+  const trailing = take(); // compaction still running after the last minute
 
-  // Projection from the steady minutes (the first minute also reads the day so far).
-  const minutes = Math.max(1, MINUTES - 1);
-  const perInstrumentMinute = (prefix: string, command?: string) => sum(steady, prefix, command) / minutes / INSTRUMENTS;
-  const writes = [...steady].filter(([k]) => k.includes(':') && WRITES.has(k.split(':')[1] as string)).reduce((a, [, v]) => a + v.requests, 0) / minutes / INSTRUMENTS;
-  const reads = [...steady].filter(([k]) => k.includes(':') && !WRITES.has(k.split(':')[1] as string)).reduce((a, [, v]) => a + v.requests, 0) / minutes / INSTRUMENTS;
-  const cookedMb = bytes(steady, 'cooked:') / minutes / INSTRUMENTS / 1e6;
+  // Ordinary minutes: after the start, with no compaction running. The day's
+  // compaction work: everything the other minutes did beyond an ordinary
+  // minute, plus what ran after the last one. Projected as ordinary × 1,440 +
+  // compaction once a day.
+  const lastCompaction = compactions.reduce((a, c) => Math.max(a, c.at), 0);
+  const firstDayChange = minutesSeen.findIndex((m) => m.dayChange);
+  const compacting = (i: number) => firstDayChange >= 0 && i >= firstDayChange && minutesSeen[i]!.start <= lastCompaction;
+  const ordinary = minutesSeen.filter((_, i) => i > 0 && !compacting(i));
+  const busy = minutesSeen.filter((_, i) => i > 0 && compacting(i));
+  const kinds = new Set([...minutesSeen.flatMap((m) => [...m.counts.keys()]), ...trailing.keys()]);
+  const perMinute = new Map<string, { requests: number; bytes: number }>();
+  for (const key of kinds) {
+    const total = ordinary.reduce((a, m) => a + (m.counts.get(key)?.requests ?? 0), 0);
+    const totalBytes = ordinary.reduce((a, m) => a + (m.counts.get(key)?.bytes ?? 0), 0);
+    perMinute.set(key, { requests: total / Math.max(1, ordinary.length), bytes: totalBytes / Math.max(1, ordinary.length) });
+  }
+  const daily = new Map<string, { requests: number; bytes: number }>();
+  for (const key of kinds) {
+    const base = perMinute.get(key) ?? { requests: 0, bytes: 0 };
+    const requests = busy.reduce((a, m) => a + (m.counts.get(key)?.requests ?? 0) - base.requests, 0) + (trailing.get(key)?.requests ?? 0);
+    const b = busy.reduce((a, m) => a + (m.counts.get(key)?.bytes ?? 0) - base.bytes, 0) + (trailing.get(key)?.bytes ?? 0);
+    daily.set(key, { requests: Math.max(0, requests), bytes: Math.max(0, b) });
+  }
+  const isWrite = (key: string) => key.includes(':') && WRITES.has(key.split(':')[1] as string);
+  const isRead = (key: string) => key.includes(':') && !isWrite(key);
+  const total = (m: Map<string, { requests: number; bytes: number }>, f: (k: string) => boolean) => [...m].filter(([k]) => f(k)).reduce((a, [, v]) => a + v.requests, 0);
+  const per = (m: Map<string, { requests: number; bytes: number }>, key: string) => (m.get(key)?.requests ?? 0) / INSTRUMENTS;
+  const writesPerDay = (total(perMinute, isWrite) * 1_440 + total(daily, isWrite)) / INSTRUMENTS;
+  const readsPerDay = (total(perMinute, isRead) * 1_440 + total(daily, isRead)) / INSTRUMENTS;
+  const cookedMbPerDay = ([...perMinute].filter(([k]) => k.startsWith('cooked:')).reduce((a, [, v]) => a + v.bytes, 0) * 1_440 +
+    [...daily].filter(([k]) => k.startsWith('cooked:')).reduce((a, [, v]) => a + v.bytes, 0)) / INSTRUMENTS / 1e6;
+  const sorted = (xs: number[]) => [...xs].sort((a, b) => a - b);
+  const ordinaryTimes = sorted(ordinary.flatMap((m) => m.times));
+  const busyTimes = sorted(busy.flatMap((m) => m.times));
+  const compactionMs = sorted(compactions.map((c) => c.ms));
   console.log(
     [
       '',
-      `Per instrument per minute (steady): S3 writes ${writes.toFixed(2)} (raw PUT ${perInstrumentMinute('raw:', 'PutObjectCommand').toFixed(2)}, cooked PUT ${perInstrumentMinute('cooked:', 'PutObjectCommand').toFixed(2)}), ` +
-        `S3 reads ${reads.toFixed(2)}, cooked upload ${(cookedMb * 1000).toFixed(1)} kB, Redis ${perInstrumentMinute('redis').toFixed(1)}`,
+      `Ordinary minute, per instrument: raw PUT ${per(perMinute, 'raw:PutObjectCommand').toFixed(2)}, raw GET ${per(perMinute, 'raw:GetObjectCommand').toFixed(2)}, ` +
+        `cooked GET ${per(perMinute, 'cooked:GetObjectCommand').toFixed(2)}, cooked PUT ${per(perMinute, 'cooked:PutObjectCommand').toFixed(2)}, Redis ${per(perMinute, 'redis').toFixed(1)}`,
+      `Daily compaction, per instrument: raw GET ${per(daily, 'raw:GetObjectCommand').toFixed(1)}, raw LIST ${per(daily, 'raw:ListObjectsV2Command').toFixed(1)}, ` +
+        `cooked GET ${per(daily, 'cooked:GetObjectCommand').toFixed(1)}, cooked PUT ${per(daily, 'cooked:PutObjectCommand').toFixed(1)}` +
+        (compactions.length === 0 ? ' (no midnight in this run)' : `; ${compactions.length} instruments compacted, ${n(percentile(compactionMs, 0.5))} ms each (p50), all done ${((lastCompaction - (minutesSeen[firstDayChange]?.start ?? lastCompaction)) / 1000).toFixed(0)} s after midnight`),
       '',
       'Projection          S3 writes/day   S3 reads/day   cooked GB up/day   S3 requests $/month',
       ...[2, 50, 500].map((count_) => {
-        const day = 1_440 * count_;
-        const dollars = ((writes * day) / 1000) * PRICE_PER_1000.write * 30 + ((reads * day) / 1000) * PRICE_PER_1000.read * 30;
-        return `${`${count_} instruments`.padEnd(19)} ${n(writes * day).padStart(13)}   ${n(reads * day).padStart(12)}   ${(cookedMb * day / 1000).toFixed(1).padStart(16)}   ${('$' + dollars.toFixed(0)).padStart(19)}`;
+        const dollars = ((writesPerDay * count_) / 1000) * PRICE_PER_1000.write * 30 + ((readsPerDay * count_) / 1000) * PRICE_PER_1000.read * 30;
+        return `${`${count_} instruments`.padEnd(19)} ${n(writesPerDay * count_).padStart(13)}   ${n(readsPerDay * count_).padStart(12)}   ${((cookedMbPerDay * count_) / 1000).toFixed(2).padStart(16)}   ${('$' + dollars.toFixed(0)).padStart(19)}`;
       }),
-      '(S3 Standard list prices, us-east-1: $0.005 per 1,000 writes and lists, $0.0004 per 1,000 reads; requests only, not storage)',
+      '(ordinary minutes × 1,440 + one compaction a day; S3 Standard list prices, us-east-1: $0.005 per 1,000 writes and lists,',
+      ' $0.0004 per 1,000 reads; requests only, not storage. Compaction here reads a few live minutes per day; a full day of',
+      ' live minutes is up to 1,440 GETs until M1-15b adds hour files.)',
       '',
-      `Steady minutes: p50 ${n(percentile([...steadyTimes].sort((a, b) => a - b), 0.5))} ms, p95 ${n(percentile([...steadyTimes].sort((a, b) => a - b), 0.95))} ms from minute close to announced.`,
+      `Minute close to announced: ordinary minutes p50 ${n(percentile(ordinaryTimes, 0.5))} ms, p95 ${n(percentile(ordinaryTimes, 0.95))} ms` +
+        (busyTimes.length === 0 ? '.' : `; during compaction p50 ${n(percentile(busyTimes, 0.5))} ms, p95 ${n(percentile(busyTimes, 0.95))} ms.`),
       fellBehind ? 'FELL BEHIND: a minute took longer than a minute to handle.' : 'Kept up: every minute was handled within the minute.',
       ...(errors.length === 0 ? [] : [`${errors.length} pipeline errors, for example: ${errors[0]}`]),
     ].join('\n'),
