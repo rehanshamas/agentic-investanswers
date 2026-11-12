@@ -25,6 +25,8 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M1-12 | Extend the market calendar to 1999-2027 | done | #53 | #70 |
 | M1-13 | Commit parity fixtures, turn on the CI parity job | blocked | #58 |  |
 | M1-14 | Split parity: exact build parity, reported source fidelity | done | #67 | #68 |
+| M1-15 | M1 scale-out: no bottleneck or dead end in the live data path | todo | #81 |  |
+| M1-16 | Data layer boundary: one data-access interface for the rest of the app | todo | #82 |  |
 | M2-01 | CDK staging stack | todo | #18 |  |
 | M2-02 | Cache layer | done | #19 | #77 |
 | M2-03 | History API | done | #20 | #79 |
@@ -32,8 +34,8 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M2-05 | Chart app | todo | #22 |  |
 | M2-06 | Scroll-back paging, smooth loading of older history | todo | #23 |  |
 | M2-07 | Freshness checker | todo | #24 |  |
-| M2-08 | Sign-in integration with InvestAnswers (token validation), user context | todo | #25 |  |
-| M2-09 | Plan-based access | todo | #26 |  |
+| M2-08 | The app's own sign-up and sign-in (InvestAnswers sign-in later) | todo | #25 |  |
+| M2-09 | Plan-based access on placeholder plans | todo | #26 |  |
 | M2-10 | Safeguards | todo | #27 |  |
 | M2-11 | Embed in the InvestAnswers site (iframe or web component), domain-locked | todo | #28 |  |
 | M2-12 | Themes (light and dark) and mobile layout | todo | #29 |  |

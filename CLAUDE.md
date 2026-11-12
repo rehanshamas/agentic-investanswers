@@ -41,6 +41,7 @@ Say "bar", "timeframe", "instrument", "market session", "indicator". Never "cand
 - Propose a plan first and wait for approval before editing.
 - One task per branch (`<task-id>-<slug>`), small commits, then open a PR describing what changed and how it was verified. Never push to `main`, never force-push, never commit `.env` or keys. Each PR body says `Closes #<issue>` for its task's GitHub issue.
 - **Before you stop, finished or not:** update the Handoff in `tasks/<ID>.md` (done, left, surprises, next step) and `tasks/STATUS.md`, and commit them on the task branch. If context is getting long, do this first and tell the user to start a fresh session.
+- **Decision record (for the client):** `docs/decisions-record.md` lists every fallback in effect, temporary decision and postponed decision, in plain words the client can read. When a task adds, changes or closes one (a missing input worked around, a placeholder, a choice deferred), update it in the same PR, and move closed entries to "Closed" with the outcome, never deleting them.
 - In the PR description, fill in the template's by-hand checklist: tick what you verified, and list for the user what **they** must still check by hand (for example, "spot-check BTC 1W bars of 2024-03 against TradingView").
 - Use subagents for broad reading or searching; keep this session for the change itself.
 - `fixtures/` is protected: a hook blocks edits unless Sham started Claude with `AIA_ALLOW_FIXTURES=1`, and CI fails any PR that touches it without the `fixtures-approved` label.
