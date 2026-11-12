@@ -24,6 +24,20 @@ Full specification: `analytics-platform-architecture` (project files). This page
 - The rules (parameters, cap, what is served) live in `HistoryQuery` (`@aia/market-data`). The app only maps outcomes to HTTP statuses. Until M1-08, only crypto at 1m to 4h is served.
 - **Principal on every request.** The resolver and policy ports in `@aia/access` are checked first (401), and the policy after parsing (403). Until M2-08: with `AIA_DEV_AUTH=1`, every request is the local developer with full access; without it, everything gets 401.
 
+## Live gateway (M2-04)
+- **One WebSocket per browser**, `GET /live` on the platform process, carrying all its subscriptions (`{ op: 'subscribe' | 'unsubscribe', instrument, tf }`, at most 20). The protocol is in `@aia/market-data` (`application/live-protocol.ts`). The principal is resolved before the upgrade (401 otherwise; browsers may pass `?token=` until M2-08 settles sign-in), and the plan is checked on every subscription (`forbidden`).
+- **Two kinds of update**, each replacing the bar with the same time:
+  - **Stored:** a minute's BarClosed events. `pnpm live` announces them only after the store, cooking and the recent-bars cache have them, so a chart is never ahead of `GET /bars`.
+  - **Forming** (`forming: true`): the chart ticks with trades.
+    - The live stream reports the minutes not yet stored (still forming, or closed and being written) at most every 250 ms when they change.
+    - `FormingBars` rolls each timeframe's bar up from three parts: the newest cooked bar, minutes stored but not yet cooked, and those unstored minutes. It uses the same `rollUp` as cooking.
+    - Forming bars are never written anywhere. The partial minute at a start or reconnect never forms.
+- **Transport:** announcements go over Redis pub/sub (channel `bars:live`) with a sequence number per publisher. The platform has one subscriber, and `LiveGateway` fans out in process.
+- **Batching:** each browser gets at most one message per 100 ms, holding only the newest value of each bar.
+- **Resync:** after a gap in the sequence, a lost Redis connection, a dropped provider stream, or a failed write, cook or cache update, every browser is sent `resync` and reloads from `GET /bars`. `pnpm cook`, `pnpm gaps` and `pnpm backfill` also send one, after dropping cached windows.
+- **Slow clients:** a browser with more than 1 MiB waiting to be sent is closed (1013) and reconnects.
+- **Load test:** `pnpm load-live`, 1,000 clients by default (100 in `pnpm check`). Results are in `tasks/M2-04.md`.
+
 ## Feed independence (client requirement, CLAUDE.md rule 7)
 The client must be able to change the source of any feed at any time with no hard dependency on a provider. Introduced in M1-05.
 - **Ports speak our language only.** `HistoryProviderPort` returns `Bar`s and `LiveTradesPort` emits trades as `{ time, price, size }` in our scaled units, both keyed by our instrument symbol (`BTCUSD`). Mapping to the provider's symbol (`BTC-USD`), parsing its JSON, its units, rate limits, reconnect quirks and errors all live in its adapter. The domain, the application layer and the stores never see a provider type.

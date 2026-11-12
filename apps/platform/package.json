@@ -19,11 +19,15 @@
     "@aia/market-data": "workspace:*",
     "@aia/shared-kernel": "workspace:*",
     "@fastify/compress": "^8.3.1",
+    "@fastify/websocket": "11.3.4",
     "fastify": "^5.12.8"
   },
   "nx": {
     "tags": [
       "type:app"
     ]
+  },
+  "devDependencies": {
+    "@types/ws": "8.18.1"
   }
 }

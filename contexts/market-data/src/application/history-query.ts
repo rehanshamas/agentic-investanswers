@@ -5,9 +5,11 @@
 //
 //   GET /bars?instrument=BTCUSD&tf=5m&limit=500&before=1762800000
 
-import type { Bar, BarTime, Instrument, Timeframe } from '@aia/shared-kernel';
-import { BarTimeError, barTime, formatScaled, isTimeframe } from '@aia/shared-kernel';
+import type { BarTime, Instrument, Timeframe } from '@aia/shared-kernel';
+import { BarTimeError, barTime, isTimeframe } from '@aia/shared-kernel';
 
+import type { DisplayBar } from '../domain/display-bar.js';
+import { displayBar } from '../domain/display-bar.js';
 import { whyNotServed } from '../domain/served.js';
 import type { RecentBars } from './recent-bars.js';
 
@@ -37,14 +39,7 @@ export interface HistoryRequest {
 }
 
 /** One bar in display units: prices and volume as decimal numbers, time in UTC seconds. */
-export interface HistoryBar {
-  readonly time: number;
-  readonly open: number;
-  readonly high: number;
-  readonly low: number;
-  readonly close: number;
-  readonly volume: number;
-}
+export type HistoryBar = DisplayBar;
 
 export interface HistoryResponse {
   readonly instrument: string;
@@ -135,17 +130,4 @@ export class HistoryQuery {
       next: page.next,
     };
   }
-}
-
-/** Scaled whole numbers to decimals at the instrument's precision. */
-function displayBar(instrument: Instrument, bar: Bar): HistoryBar {
-  const p = (value: number) => Number(formatScaled(value, instrument.priceScale));
-  return {
-    time: bar.time,
-    open: p(bar.open),
-    high: p(bar.high),
-    low: p(bar.low),
-    close: p(bar.close),
-    volume: Number(formatScaled(bar.volume, instrument.volumeScale)),
-  };
 }

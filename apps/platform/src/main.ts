@@ -1,7 +1,8 @@
 // `pnpm platform`: run the platform process locally (M2-03).
 //
 // Wires the stores (MinIO locally), the recent-bars cache (Redis) and the
-// feed plan into the History API and listens. Settings, all optional:
+// feed plan into the History API, and the live bars bus (the same Redis) into
+// the live gateway (M2-04), and listens. Settings, all optional:
 //   AIA_PORT (8080), AIA_HOST (127.0.0.1), AIA_REDIS_URL, AIA_S3_* and
 //   AIA_*_BUCKET as for the hydration commands, AIA_FEED_PLAN,
 //   AIA_DEV_AUTH=1 to treat every request as the local developer (until M2-08).
@@ -12,8 +13,10 @@ import { accessFromEnv } from '@aia/access';
 import { RawMinuteSource, S3RawBarStore, feedsFor, liveProviderOf, loadFeedPlan, rawProviderOf } from '@aia/hydration';
 import {
   HistoryQuery,
+  LiveGateway,
   PARITY_INSTRUMENTS,
   RecentBars,
+  RedisLiveBarsBus,
   RedisRecentBarsCache,
   S3CookedBarStore,
 } from '@aia/market-data';
@@ -49,23 +52,40 @@ async function main(): Promise<void> {
     const { year, month, day } = parseDateKey(feedsFor(plan, symbol).defaultFrom);
     return barTimeFromUtcParts(year, month, day);
   };
+  const instruments = PARITY_INSTRUMENTS.filter((i) => plan.instruments.some((f) => f.symbol === i.symbol));
   const history = new HistoryQuery({
     recentBars: new RecentBars({ cache, store: cooked, minutes }),
-    instruments: PARITY_INSTRUMENTS.filter((i) => plan.instruments.some((f) => f.symbol === i.symbol)),
+    instruments,
     earliest,
   });
 
+  // One subscriber per process; the gateway fans out to every browser.
+  const live = new LiveGateway({
+    instruments,
+    every: (ms, run) => {
+      const timer = setInterval(run, ms);
+      return () => clearInterval(timer);
+    },
+  });
+  const bus = await RedisLiveBarsBus.connect({
+    url: env['AIA_REDIS_URL'],
+    onError: (failure) => console.error(`redis (live bus): ${failure.message} (charts resync once it is back)`),
+  });
+  await bus.subscribe(live);
+
   const access = accessFromEnv(env);
   console.log(access.description);
-  const app = await buildServer({ history, access, now: () => barTime(Math.floor(Date.now() / 1000)), logger: true });
+  const app = await buildServer({ history, access, live, now: () => barTime(Math.floor(Date.now() / 1000)), logger: true });
 
   const port = Number(env['AIA_PORT'] ?? 8080);
   const host = env['AIA_HOST'] ?? '127.0.0.1';
   await app.listen({ port, host });
 
   const shutdown = (): void => {
+    live.stop();
     void app
       .close()
+      .then(() => bus.close())
       .then(() => cache.close())
       .then(() => process.exit(0));
   };

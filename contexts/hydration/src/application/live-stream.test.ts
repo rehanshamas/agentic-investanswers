@@ -125,6 +125,64 @@ describe('LiveStream', () => {
     await stream.stop();
   });
 
+  it('reports forming minutes on its tick when they changed, never the partial first minute (M2-04)', async () => {
+    const { clock, feed, store, events, stream } = setup();
+    clock.time = at(0, 30);
+    stream.start();
+    feed.sink?.onOpen();
+    feed.trade(at(0, 40), 100, 1); // partial: never forms
+    clock.advance(at(1, 0));
+    expect(events.filter((e) => e.kind === 'forming')).toEqual([]);
+    feed.trade(at(1, 10), 101, 2);
+    feed.trade(at(1, 10), 103, 3);
+    clock.advance(at(1, 11)); // four ticks, one report
+    clock.advance(at(1, 20)); // no new trades, no reports
+    feed.trade(at(1, 20), 99, 4);
+    clock.advance(at(2, 3));
+    await flush();
+
+    const forming = events.filter((e) => e.kind === 'forming');
+    expect(forming).toEqual([
+      { kind: 'forming', symbol: 'BTCUSD', bars: [{ time: minute(1), open: 101, high: 103, low: 101, close: 103, volume: 2 }] },
+      { kind: 'forming', symbol: 'BTCUSD', bars: [{ time: minute(1), open: 101, high: 103, low: 99, close: 99, volume: 3 }] },
+    ]);
+    // The stored minute is the last forming one, and is reported after it.
+    expect([...store.minutes.values()]).toEqual([forming[1]?.kind === 'forming' ? forming[1].bars[0] : undefined]);
+    expect(events.findIndex((e) => e.kind === 'minute')).toBeGreaterThan(events.lastIndexOf(forming[1] as LiveEvent));
+    await stream.stop();
+  });
+
+  it('keeps reporting a closed minute until it is stored, so it never drops out of the reports (M2-04)', async () => {
+    const { clock, feed, store, events, stream } = setup();
+    let release = (): void => {};
+    const put = store.putLiveMinute.bind(store);
+    store.putLiveMinute = (ref, bar) => new Promise<void>((resolve) => (release = () => void put(ref, bar).then(resolve)));
+    clock.time = at(0, 0);
+    stream.start();
+    feed.sink?.onOpen();
+    feed.trade(at(0, 30), 100, 1);
+    clock.advance(at(1, 1));
+    feed.trade(at(1, 1), 101, 2);
+    clock.advance(at(1, 2)); // 12:00 closes on this tick; its write is held
+    feed.trade(at(1, 3), 102, 3);
+    clock.advance(at(1, 4));
+    const last = events.filter((e) => e.kind === 'forming').at(-1);
+    expect(last?.kind === 'forming' && last.bars.map((b) => [b.time, b.close])).toEqual([
+      [minute(0), 100],
+      [minute(1), 102],
+    ]);
+    await flush(); // the held write has started
+    release();
+    await flush();
+    await flush();
+    expect(events.at(-1)).toMatchObject({ kind: 'minute', bar: { time: minute(0) } });
+    feed.trade(at(1, 5), 103, 4);
+    clock.advance(at(1, 6));
+    const after = events.at(-1);
+    expect(after?.kind === 'forming' && after.bars.map((b) => b.time)).toEqual([minute(1)]);
+    await stream.stop();
+  });
+
   it('on a drop mid-minute: no half bar, a gap for the lost minutes, backoff, then bars resume', async () => {
     const { clock, feed, store, events, stream } = setup();
     clock.time = at(0, 0);
