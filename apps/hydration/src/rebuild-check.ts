@@ -61,7 +61,7 @@ function parse(): { instruments: Instrument[]; from: string; until: string } {
 async function main(): Promise<void> {
   const { instruments, from, until } = parse();
   const stores = localStores(loadFeedPlan());
-  const check = new RebuildCheck({ source: stores.minutes, store: stores.cooked, calendar: nyseCalendar() });
+  const check = new RebuildCheck({ source: stores.minutes, store: stores.cooked, watermarks: stores.cooked, calendar: nyseCalendar() });
   const months = monthsBetween(from, until);
   console.log(
     `Rebuild check: ${instruments.map((i) => i.symbol).join(', ')}, ${months[0]} to ` +

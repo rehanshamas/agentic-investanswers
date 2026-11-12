@@ -128,11 +128,13 @@ async function main(): Promise<void> {
     rawProviderOf: rawProviderOf(feedPlan),
     liveProviderOf: liveProviderOf(feedPlan),
     cooked: stores.cooked,
+    watermarks: stores.cooked,
     cache: redis,
     bus: liveBus,
     publisher: `live-${randomUUID()}`,
     calendar: nyseCalendar(),
     log: (line) => console.log(`${new Date().toISOString().slice(11, 19)} ${line}`),
+    nowMs: () => Date.now(),
   });
 
   const record = values.record;

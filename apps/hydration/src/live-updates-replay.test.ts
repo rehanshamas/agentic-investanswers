@@ -13,7 +13,7 @@
 
 import { CoinbaseTrades, LiveStream, RawMinuteSource } from '@aia/hydration';
 import type { LiveBarUpdate, LiveBatch, RecentBarsCachePort } from '@aia/market-data';
-import { MemoryLiveBarsBus, MemoryRecentBarsCache } from '@aia/market-data';
+import { CookedReader, MemoryCookedWatermarks, MemoryLiveBarsBus, MemoryRecentBarsCache, RecentBars } from '@aia/market-data';
 import type { Bar, Timeframe } from '@aia/shared-kernel';
 import { describe, expect, it } from 'vitest';
 
@@ -45,6 +45,7 @@ async function replay() {
     () => 'coinbase',
   );
   const cooked = new MemoryCookedStore();
+  const watermarks = new MemoryCookedWatermarks();
 
   // One log for cache writes and announcements, in the order they happen.
   const log: Logged[] = [];
@@ -69,10 +70,12 @@ async function replay() {
     rawProviderOf: () => undefined,
     liveProviderOf: () => 'coinbase',
     cooked,
+    watermarks,
     cache,
     bus,
     publisher: 'replay',
     log: () => {},
+    nowMs: () => clock.now(),
   });
   const stream = new LiveStream(
     {
@@ -87,6 +90,13 @@ async function replay() {
     INSTRUMENTS,
   );
 
+  // Charts are open: every window is warm before the first minute.
+  const warmReader = new CookedReader({ store: cooked, watermarks, minutes, instruments: INSTRUMENTS, nowMs: () => 0 });
+  const warming = new RecentBars({ cache: memory, store: warmReader, minutes });
+  for (const instrument of INSTRUMENTS) {
+    for (const tf of TIMEFRAMES) await warming.read(instrument, tf, { limit: 2_000, now: seconds(clock.now()) });
+  }
+
   stream.start();
   socket.onopen?.({});
   for (const { t, m } of messages) {
@@ -98,14 +108,16 @@ async function replay() {
   await stream.stop();
   await pipeline.settled();
   const seconds_ = ((messages.at(-1)?.t ?? 0) - (messages[0]?.t ?? 0)) / 1000;
-  return { log, cooked, minutes, end: seconds(clock.now()), seconds: seconds_ };
+  // The store as readers see it (M1-15): settled cooked bars, then the rest rolled up from raw.
+  const store = new CookedReader({ store: cooked, watermarks, minutes, instruments: INSTRUMENTS, nowMs: () => 0 });
+  return { log, store, memory, minutes, end: seconds(clock.now()), seconds: seconds_ };
 }
 
 const updatesOf = (log: readonly Logged[]): LiveBarUpdate[] =>
   log.flatMap((entry) => (entry.kind === 'announced' ? entry.batch.updates : []));
 
 describe('live updates after a replay of the recorded Coinbase stream (M2-04)', async () => {
-  const { log, cooked, minutes, end, seconds: duration } = await replay();
+  const { log, store, memory, minutes, end, seconds: duration } = await replay();
   const updates = updatesOf(log);
 
   it('announces stored and forming bars for every instrument and timeframe, in sequence', () => {
@@ -140,7 +152,7 @@ describe('live updates after a replay of the recorded Coinbase stream (M2-04)', 
         for (const u of updates) if (u.symbol === symbol && u.timeframe === tf) chart.set(u.bar.time, u);
         const times = [...chart.keys()].sort((a, b) => a - b);
         const from = times[0] as number;
-        const stored = tf === '1m' ? await minutes.read(symbol, from as never, end) : await cooked.getRange(symbol, tf, from as never, end);
+        const stored = tf === '1m' ? await minutes.read(symbol, from as never, end) : await store.getRange(symbol, tf, from as never, end);
         const storedByTime = new Map(stored.map((b) => [b.time as number, b]));
         const newest = times.at(-1);
         let compared = 0;
@@ -172,6 +184,19 @@ describe('live updates after a replay of the recorded Coinbase stream (M2-04)', 
           expect(storedSoFar.has(u.bar.time)).toBe(false);
           expect(u.bar.time).toBeGreaterThanOrEqual(firstStored);
         }
+      }
+    }
+  });
+
+  it('leaves every cache window equal to the store as readers see it (M2-02, through the live pipeline)', async () => {
+    for (const { symbol } of INSTRUMENTS) {
+      for (const tf of TIMEFRAMES) {
+        const window = await memory.get(symbol, tf);
+        expect(window, `${symbol} ${tf}`).toBeDefined();
+        const { from, bars } = window as NonNullable<typeof window>;
+        const served = tf === '1m' ? await minutes.read(symbol, from, end) : await store.getRange(symbol, tf, from, end);
+        expect(bars, `${symbol} ${tf}`).toEqual(served);
+        expect(served.length).toBeGreaterThanOrEqual(tf === '1m' ? 25 : 1);
       }
     }
   });

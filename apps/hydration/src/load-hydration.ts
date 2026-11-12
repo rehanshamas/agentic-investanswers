@@ -10,9 +10,10 @@
 //   pnpm load-hydration --minute-ms 10000                 a "minute" every 10 s (quicker, harsher)
 //   pnpm load-hydration --day 1                           start of a month: small cooked partitions
 //
-// By default the simulation runs on the 28th, with each instrument's cooked
-// month already filled up to then, because cost that grows with the partition
-// shows late in a month. It uses its own buckets (aia-load-raw,
+// By default the simulation starts at 23:58 on the 28th, with each
+// instrument's cooked month already filled up to then, because cost that grows
+// with the partition shows late in a month; the third minute crosses midnight,
+// so the daily compaction is measured too. It uses its own buckets (aia-load-raw,
 // aia-load-cooked) and Redis database 14, with fresh symbols every run; all of
 // it is disposable.
 //
@@ -98,8 +99,9 @@ const instruments: Instrument[] = Array.from({ length: INSTRUMENTS }, (_, i) => 
   priceScale: 2,
   volumeScale: 8,
 }));
-// Midday on the chosen day, so every timeframe has a bar in progress.
-const SIM_START = barTimeFromUtcParts(2026, 11, DAY, 12, 0);
+// Two minutes before midnight: every timeframe has a bar in progress, and the
+// third minute starts a new UTC day, which sets off compaction.
+const SIM_START = barTimeFromUtcParts(2026, 11, DAY, 23, 58);
 
 function bar(time: number, seed: number): Bar {
   const base = 5_000_000 + ((seed * 7_919) % 100_000);
@@ -175,26 +177,28 @@ async function main(): Promise<void> {
     rawProviderOf: () => 'loadsim',
     liveProviderOf: () => 'loadsim',
     cooked,
+    watermarks: cooked,
     cache: countingCache(cache),
     bus: { publish: (batch) => (count('redis'), bus.publish(batch)) },
     publisher: `load-${run}`,
-    log: (line) => errors.push(line),
+    log: (line) => (line.includes('failed') ? errors.push(line) : console.log(`  ${line}`)),
+    nowMs: () => Date.now(),
   });
 
-  if (DAY > 1) {
-    console.log(`Filling each instrument's cooked month up to 2026-11-${String(DAY).padStart(2, '0')} 12:00 (not counted)...`);
-    for (let i = 0; i < instruments.length; i += 25) {
-      await Promise.all(
-        instruments.slice(i, i + 25).flatMap((instrument, j) =>
-          INTRADAY_ROLLUPS.map((tf) => cooked.put(instrument.symbol, tf, monthSoFar(tf, i + j))),
-        ),
-      );
-    }
+  console.log(`Filling each instrument's cooked month up to 2026-11-${String(DAY).padStart(2, '0')} 23:58 (not counted)...`);
+  for (let i = 0; i < instruments.length; i += 25) {
+    await Promise.all(
+      instruments.slice(i, i + 25).flatMap((instrument, j) => [
+        ...(DAY > 1 ? INTRADAY_ROLLUPS.map((tf) => cooked.put(instrument.symbol, tf, monthSoFar(tf, i + j))) : []),
+        // As a process that has been running: earlier days are settled.
+        cooked.setWatermark(instrument.symbol, barTimeFromUtcParts(2026, 11, DAY)),
+      ]),
+    );
   }
   take();
 
   console.log(
-    `${n(INSTRUMENTS)} instruments, ${MINUTES} minutes, a minute every ${MINUTE_MS / 1000} s, from 2026-11-${String(DAY).padStart(2, '0')} 12:00 (run ${run})\n`,
+    `${n(INSTRUMENTS)} instruments, ${MINUTES} minutes, a minute every ${MINUTE_MS / 1000} s, from 2026-11-${String(DAY).padStart(2, '0')} 23:58 (run ${run})\n`,
   );
   console.log('minute    p50 ms  p95 ms  max ms  raw PUT  raw GET raw LIST  ckd GET  ckd PUT  ckd MB up  redis');
   const steady: Counts = new Map();
@@ -215,7 +219,7 @@ async function main(): Promise<void> {
       }),
     );
     const c = take();
-    console.log(row(k === 0 ? `${k + 1} (start)` : `${k + 1}`, c, times));
+    console.log(row(k === 0 ? `${k + 1} (start)` : time % 86_400 === 0 ? `${k + 1} (00:00)` : `${k + 1}`, c, times));
     if ((times.reduce((a, b) => Math.max(a, b), 0)) > MINUTE_MS) fellBehind = true;
     if (k > 0 || MINUTES === 1) {
       for (const [key, v] of c) {

@@ -6,13 +6,28 @@
 // recent-bars cache, then announced to charts, in that order and one minute at
 // a time per instrument. Forming minutes are announced at once. Anything that
 // may leave charts differing from the store announces a resync.
+//
+// Cooking is in memory (M1-15): the cooked store holds settled days only,
+// written by the compactor, and readers roll up the rest from raw. The first
+// minute of each UTC day, and the first after start, sets off compaction for
+// that instrument in the background; it never holds up a minute.
 
 import type { ProviderOf, RawDayRef } from '@aia/hydration';
 import { RawMinuteSource } from '@aia/hydration';
-import type { CookedBarStorePort, LiveBarUpdate, LiveBarsBusPort, RecentBarsCachePort } from '@aia/market-data';
-import { CookIntraday, FormingBars, INTRADAY_ROLLUPS, LiveAnnouncer, RecentBars, barClosedEvents } from '@aia/market-data';
+import type { CookedBarStorePort, CookedWatermarkPort, LiveBarUpdate, LiveBarsBusPort, RecentBarsCachePort } from '@aia/market-data';
+import {
+  CookIntraday,
+  CookedCompactor,
+  CookedReader,
+  FormingBars,
+  INTRADAY_ROLLUPS,
+  LiveAnnouncer,
+  LiveCook,
+  RecentBars,
+  barClosedEvents,
+} from '@aia/market-data';
 import type { Bar, Instrument, MarketCalendar, Timeframe } from '@aia/shared-kernel';
-import { zonedDateKey } from '@aia/shared-kernel';
+import { barTime, zonedDateKey } from '@aia/shared-kernel';
 
 import { CACHED_TIMEFRAMES } from './cache.js';
 
@@ -25,20 +40,29 @@ export interface LivePipelineDeps {
   readonly rawProviderOf: ProviderOf;
   readonly liveProviderOf: ProviderOf;
   readonly cooked: CookedBarStorePort;
+  readonly watermarks: CookedWatermarkPort;
   readonly cache: RecentBarsCachePort;
   readonly bus: Pick<LiveBarsBusPort, 'publish'>;
   /** Unique per process run. */
   readonly publisher: string;
   readonly calendar?: MarketCalendar;
   readonly log: (line: string) => void;
+  /** Epoch milliseconds. */
+  readonly nowMs: () => number;
 }
+
+const DAY = 86_400;
 
 export class LivePipeline {
   private readonly bySymbol: ReadonlyMap<string, Instrument>;
   private readonly forming: ReadonlyMap<string, FormingBars>;
   /** Today's live minutes, held in memory once read, so cooking a new minute does not list the day again. */
   private readonly liveDays = new Map<string, Promise<Bar[]>>();
-  private readonly cook: CookIntraday;
+  private readonly cooks: ReadonlyMap<string, LiveCook>;
+  private readonly compactor: CookedCompactor;
+  /** Per instrument, the UTC day compaction last ran for, and the run in progress. */
+  private readonly compacted = new Map<string, number>();
+  private readonly compacting = new Map<string, Promise<void>>();
   private readonly recent: RecentBars;
   private readonly announcer: LiveAnnouncer;
   /** Per instrument, its minutes in order. */
@@ -57,12 +81,23 @@ export class LivePipeline {
       getLiveMinutes: (ref: RawDayRef) => this.liveDay(ref),
     };
     const minutes = new RawMinuteSource(cachedRaw, deps.rawProviderOf, deps.liveProviderOf);
-    this.cook = new CookIntraday({
-      source: minutes,
+    const calendar = deps.calendar === undefined ? {} : { calendar: deps.calendar };
+    // Stocks are not cooked until M1-08.
+    this.cooks = new Map(
+      deps.instruments
+        .filter((i) => i.kind !== 'stock')
+        .map((i) => [i.symbol, new LiveCook({ instrument: i, timeframes: INTRADAY_ROLLUPS, source: minutes, ...calendar })]),
+    );
+    this.compactor = new CookedCompactor({ cook: new CookIntraday({ source: minutes, store: deps.cooked, ...calendar }), watermarks: deps.watermarks });
+    const reader = new CookedReader({
       store: deps.cooked,
-      ...(deps.calendar === undefined ? {} : { calendar: deps.calendar }),
+      watermarks: deps.watermarks,
+      minutes,
+      instruments: deps.instruments,
+      nowMs: deps.nowMs,
+      ...calendar,
     });
-    this.recent = new RecentBars({ cache: deps.cache, store: deps.cooked, minutes });
+    this.recent = new RecentBars({ cache: deps.cache, store: reader, minutes });
     this.announcer = new LiveAnnouncer(deps.bus, deps.publisher);
   }
 
@@ -113,9 +148,10 @@ export class LivePipeline {
         .then(() => cachedThenAnnounce(new Map()))
         .catch((error: unknown) => this.deps.log(`${symbol}: cache update failed: ${String(error)}`));
     } else {
+      const cook = this.cooks.get(symbol) as LiveCook;
       next = previous
         .then(() => this.liveDay(ref))
-        .then(() => this.cook.applyNewMinutesToAll(instrument, [bar]))
+        .then(() => cook.apply(bar))
         .then(
           (rebuilt) =>
             cachedThenAnnounce(rebuilt).catch((error: unknown) =>
@@ -130,12 +166,39 @@ export class LivePipeline {
         );
     }
     this.chains.set(symbol, next);
+    if (instrument.kind !== 'stock') void next.then(() => this.compactIfNewDay(instrument, bar));
     return next;
   }
 
-  /** Every minute handed in so far is done. */
+  /** Compaction runs in progress, so a shutdown can wait for them. */
+  async compactions(): Promise<void> {
+    await Promise.all(this.compacting.values());
+  }
+
+  /** The first minute of a UTC day (or since start) writes the days before it to the cooked store. */
+  private compactIfNewDay(instrument: Instrument, minute: Bar): void {
+    const symbol = instrument.symbol;
+    const today = Math.floor(minute.time / DAY) * DAY;
+    if ((this.compacted.get(symbol) ?? -1) >= today || this.compacting.has(symbol)) return;
+    const started = this.deps.nowMs();
+    const run = this.compactor
+      .compact(instrument, barTime(today))
+      .then(
+        (days) => {
+          this.compacted.set(symbol, today);
+          if (days > 0) this.deps.log(`${symbol}: ${days} settled day(s) written to the cooked store in ${this.deps.nowMs() - started} ms`);
+        },
+        // Readers roll up everything past the watermark, so a late compaction slows reads, never breaks them.
+        (error: unknown) => this.deps.log(`${symbol}: compaction failed, retried on the next minute: ${String(error)}`),
+      )
+      .finally(() => this.compacting.delete(symbol));
+    this.compacting.set(symbol, run);
+  }
+
+  /** Every minute handed in so far is done, and any compaction it set off. */
   async settled(): Promise<void> {
     await Promise.all(this.chains.values());
+    await this.compactions();
   }
 
   private liveDay(ref: RawDayRef): Promise<Bar[]> {
