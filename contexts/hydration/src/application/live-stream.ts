@@ -1,8 +1,10 @@
 // The live stream use case (M1-05): trades in, closed 1-minute bars out to
 // the raw store as each minute ends, reconnecting with backoff and recording a
 // gap for every minute a disconnect cost. On each tick it also reports the
-// minutes still forming, when they changed (M2-04), so charts tick with
-// trades; those are never stored.
+// minutes not yet stored, when one changed (M2-04), so charts tick with
+// trades: those still forming, and those closed but still being written, so a
+// minute is never missing from the reports between closing and being stored.
+// Reports are never stored.
 //
 // Provider-neutral (CLAUDE.md rule 7): it sees a `LiveTradesPort` and a
 // `LiveRawStorePort`, never a provider. The clock and timers are injected, so
@@ -32,7 +34,10 @@ export type LiveEvent =
   | { readonly kind: 'connected' }
   | { readonly kind: 'disconnected'; readonly reason: string; readonly retryInMs: number }
   | { readonly kind: 'minute'; readonly symbol: string; readonly bar: Bar }
-  /** The minutes still forming, ascending (M2-04). Not stored; a later `minute` event gives the stored bar. */
+  /**
+   * The minutes not yet stored, ascending (M2-04): still forming, or closed and
+   * being written. A later `minute` event gives each one's stored bar.
+   */
   | { readonly kind: 'forming'; readonly symbol: string; readonly bars: readonly Bar[] }
   | { readonly kind: 'gap'; readonly symbol: string; readonly gap: LiveGap }
   | { readonly kind: 'late'; readonly symbol: string }
@@ -66,6 +71,8 @@ export class LiveStream {
   private readonly builders = new Map<string, MinuteBuilder>();
   /** Per symbol: where the current gap began, while disconnected. */
   private readonly gapFrom = new Map<string, BarTime>();
+  /** Per symbol: minutes closed but not yet written (or refused), by time. */
+  private readonly unstored = new Map<string, Map<number, Bar>>();
   /** Per symbol: writes in order, so minutes land in raw ascending. */
   private readonly writes = new Map<string, Promise<void>>();
   private readonly options: Required<LiveStreamOptions>;
@@ -93,7 +100,10 @@ export class LiveStream {
       tickMs: options.tickMs ?? 250,
       random: options.random ?? Math.random,
     };
-    for (const instrument of instruments) this.builders.set(instrument.symbol, new MinuteBuilder());
+    for (const instrument of instruments) {
+      this.builders.set(instrument.symbol, new MinuteBuilder());
+      this.unstored.set(instrument.symbol, new Map());
+    }
   }
 
   start(): void {
@@ -200,8 +210,10 @@ export class LiveStream {
   /** At most once a tick per symbol, and only when a forming minute changed. */
   private reportForming(): void {
     for (const [symbol, builder] of this.builders) {
-      const bars = builder.takeForming();
-      if (bars !== undefined && bars.length > 0) this.emit({ kind: 'forming', symbol, bars });
+      const forming = builder.takeForming();
+      if (forming === undefined || forming.length === 0) continue;
+      const writing = [...(this.unstored.get(symbol)?.values() ?? [])].sort((a, b) => a.time - b.time);
+      this.emit({ kind: 'forming', symbol, bars: [...writing, ...forming] });
     }
   }
 
@@ -210,16 +222,20 @@ export class LiveStream {
   }
 
   private writeMinute(symbol: string, bar: Bar): void {
+    const unstored = this.unstored.get(symbol);
+    unstored?.set(bar.time, bar);
     this.enqueue(symbol, async () => {
       try {
         await this.deps.store.putLiveMinute(this.ref(symbol, bar.time), bar);
       } catch (error) {
         // Already there is fine (raw is write-once and this is the same minute).
         if (!(error instanceof LiveMinuteAlreadyStoredError)) {
+          unstored?.delete(bar.time);
           this.emit({ kind: 'write-failed', symbol, what: `minute ${bar.time}`, error: String(error) });
           return;
         }
       }
+      unstored?.delete(bar.time);
       this.emit({ kind: 'minute', symbol, bar });
     });
   }

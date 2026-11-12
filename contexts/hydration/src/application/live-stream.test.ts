@@ -152,6 +152,37 @@ describe('LiveStream', () => {
     await stream.stop();
   });
 
+  it('keeps reporting a closed minute until it is stored, so it never drops out of the reports (M2-04)', async () => {
+    const { clock, feed, store, events, stream } = setup();
+    let release = (): void => {};
+    const put = store.putLiveMinute.bind(store);
+    store.putLiveMinute = (ref, bar) => new Promise<void>((resolve) => (release = () => void put(ref, bar).then(resolve)));
+    clock.time = at(0, 0);
+    stream.start();
+    feed.sink?.onOpen();
+    feed.trade(at(0, 30), 100, 1);
+    clock.advance(at(1, 1));
+    feed.trade(at(1, 1), 101, 2);
+    clock.advance(at(1, 2)); // 12:00 closes on this tick; its write is held
+    feed.trade(at(1, 3), 102, 3);
+    clock.advance(at(1, 4));
+    const last = events.filter((e) => e.kind === 'forming').at(-1);
+    expect(last?.kind === 'forming' && last.bars.map((b) => [b.time, b.close])).toEqual([
+      [minute(0), 100],
+      [minute(1), 102],
+    ]);
+    await flush(); // the held write has started
+    release();
+    await flush();
+    await flush();
+    expect(events.at(-1)).toMatchObject({ kind: 'minute', bar: { time: minute(0) } });
+    feed.trade(at(1, 5), 103, 4);
+    clock.advance(at(1, 6));
+    const after = events.at(-1);
+    expect(after?.kind === 'forming' && after.bars.map((b) => b.time)).toEqual([minute(1)]);
+    await stream.stop();
+  });
+
   it('on a drop mid-minute: no half bar, a gap for the lost minutes, backoff, then bars resume', async () => {
     const { clock, feed, store, events, stream } = setup();
     clock.time = at(0, 0);
