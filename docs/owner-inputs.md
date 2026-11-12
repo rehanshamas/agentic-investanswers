@@ -18,10 +18,10 @@ Format: `- [ ] **ID** what · due YYYY-MM-DD · blocks TASK, TASK · check KIND:
 - [ ] **OI-09** Project board: GitHub → Projects → New project → Board, then add all `agentic-investanswers` issues and turn on the "Item closed → Done" and "Pull request merged → Done" workflows · due 2026-11-02 · blocks nothing
 
 ## From the client (Sham chases)
-- [ ] **OI-20** AWS account access for staging · due 2026-11-10 · blocks M2-01
-- [ ] **OI-21** Sign-in and subscription details, one test account per plan · due 2026-11-10 · blocks M2-08, M2-09
+- [ ] **OI-20** AWS account access for staging. Expected 2026-11-14; local stand-ins meanwhile (decision record F-01) · due 2026-11-10 · blocks M2-01
+- [ ] **OI-21** InvestAnswers sign-in and subscription details, one test account per plan. **No longer blocks M2-08 or M2-09** (Sham, 2026-11-13): the app gets its own sign-in and placeholder plans meanwhile (decision record T-01, T-02). This item now sets when they are swapped for InvestAnswers' own · due 2026-11-10 · blocks nothing
 - [ ] **OI-22** Data licence and daily-bar decision · due 2026-11-13 · blocks nothing (default: keep data permanently, provider daily bars only if needed)
-- [ ] **OI-23** IA-ATR-Model 2.1 source (NDA) and its TradingView exports · due 2026-11-16 · blocks M3-07a, M3-07b, M3-07c (fallback: M3 on the demo indicator). **Before this lands, make the repo private again and buy GitHub Pro** (agreed 2026-11-01), or the NDA source goes into a public repo; re-apply the `main` ruleset afterwards (OI-07). Going private also unblocks **M1-13**: the parity fixtures and the CI parity job are waiting on it
+- [ ] **OI-23** IA-ATR-Model 2.1 source (NDA) and its TradingView exports · due 2026-11-16 · blocks M3-07a, M3-07b, M3-07c (fallback in effect since 2026-11-13: M3 on a simple moving average, decision record F-02). **Before this lands, make the repo private again and buy GitHub Pro** (agreed 2026-11-01), or the NDA source goes into a public repo; re-apply the `main` ruleset afterwards (OI-07). Going private also unblocks **M1-13**: the parity fixtures and the CI parity job are waiting on it
 - [ ] **OI-24** Data delay promised to customers; what a "tenant" is · due 2026-11-20 · blocks M4-05
 - [ ] **OI-25** Whether InvestAnswers sign-in can issue agent tokens · due 2026-11-23 · blocks nothing (fallback: our own scoped read-only keys)
 - [x] **OI-26** Which BTC/ETH symbol (exchange) the client's indicators use in TradingView; Coinbase assumed in `docs/bar-rules.md` (client: "use any that is best", 31 Oct → Coinbase) · due 2026-11-02 · blocks M1-02, M1-04

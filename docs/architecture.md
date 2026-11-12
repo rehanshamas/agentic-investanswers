@@ -5,6 +5,7 @@ Full specification: `analytics-platform-architecture` (project files). This page
 ## Shape
 - **Monolith first.** One repo, two processes: `apps/platform` (HTTP API, WebSocket live updates, MCP tools) and `apps/hydration` (provider streams, backfill, gap repair), so hydration is isolated from user traffic. `apps/web-chart` is the browser chart.
 - **Contexts** in `contexts/<name>` own the business rules, in three layers: `domain` (pure), `application` (use cases and ports), `adapters` (AWS, HTTP, providers). Contexts talk through their package entry only.
+- **Data layer isolated in code, as a service later** (Sham, 2026-11-13, for the client; decision record T-05): the rest of the app reaches bars only through one data-access interface, never storage, the cache or provider code directly (M1-16). Running the data layer as its own service later is one new adapter behind that interface.
 - **Deferred for the MVP:** gRPC/proto contracts and separate services. Contexts call each other in-process through TypeScript interfaces; the two processes share data through S3 and announce new bars over Redis pub/sub.
 
 ## Data

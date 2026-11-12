@@ -6,5 +6,6 @@ Write the handoff for the current task, finished or not:
 
 1. In `tasks/<ID>.md`, replace the Handoff section with: **Done** (what works, with the commands that prove it), **Left** (remaining steps, in order), **Surprises** (anything unexpected: data quirks, rule questions, decisions made), **Next step** (the exact first thing the next session should do).
 2. Update the task's row in `tasks/STATUS.md` (`in progress`, `in review` with the PR link, or `blocked` with the reason).
-3. Commit both on the task branch.
-4. Tell Sham in 2 lines: where the task stands, and "start a fresh session and run `/resume-task <ID>`" if work is left.
+3. If the task added, changed or closed a fallback, temporary decision or postponed decision, update `docs/decisions-record.md` (and its "Last updated" date).
+4. Commit them on the task branch.
+5. Tell Sham in 2 lines: where the task stands, and "start a fresh session and run `/resume-task <ID>`" if work is left.
