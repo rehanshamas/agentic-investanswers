@@ -30,7 +30,7 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M2-01 | CDK staging stack | todo | #18 |  |
 | M2-02 | Cache layer | done | #19 | #77 |
 | M2-03 | History API | done | #20 | #79 |
-| M2-04 | Live gateway | in review | #21 | #80 |
+| M2-04 | Live gateway | done | #21 | #80 |
 | M2-05 | Chart app | todo | #22 |  |
 | M2-06 | Scroll-back paging, smooth loading of older history | todo | #23 |  |
 | M2-07 | Freshness checker | todo | #24 |  |
