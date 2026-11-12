@@ -4,13 +4,13 @@
 import type { PublishedSummary } from './load-live-clients.js';
 import { runClients } from './load-live-clients.js';
 
-type Message = { kind: 'start'; url: string; ids: number[] } | { kind: 'finish'; summary: PublishedSummary };
+type Message = { kind: 'start'; url: string; ids: number[]; wave: number } | { kind: 'finish'; summary: PublishedSummary };
 
 let running: ReturnType<typeof runClients> | undefined;
 
 process.on('message', (message: Message) => {
   if (message.kind === 'start') {
-    running = runClients(message.url, message.ids);
+    running = runClients(message.url, message.ids, message.wave);
     running.then(
       () => process.send?.({ kind: 'ready' }),
       (error: unknown) => process.send?.({ kind: 'error', error: String(error) }),

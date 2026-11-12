@@ -87,7 +87,7 @@ class Client {
           ws.send(JSON.stringify({ op: 'subscribe', instrument, tf }));
         }
       });
-      ws.addEventListener('error', () => reject(new Error(`client ${this.id} could not connect`)));
+      ws.addEventListener('error', (event) => reject(new Error(`client ${this.id} could not connect: ${(event as ErrorEvent).message}`)));
       ws.addEventListener('close', (event) => this.problems.push(`closed by the server: ${event.code} ${event.reason}`));
       ws.addEventListener('message', (event) => {
         const at = performance.timeOrigin + performance.now();
@@ -147,11 +147,15 @@ class Client {
   }
 }
 
-/** Run clients `ids` against `url`; `finish` checks them against what was published. */
-export async function runClients(url: string, ids: readonly number[]) {
+/**
+ * Run clients `ids` against `url`, connecting `wave` at a time; `finish`
+ * checks them against what was published. Waves keep the handshakes waiting
+ * across all client processes under macOS's listen queue (kern.ipc.somaxconn,
+ * 128), which refuses the rest; Linux allows 4,096.
+ */
+export async function runClients(url: string, ids: readonly number[], wave = 50) {
   const clients = ids.map((id) => new Client(id, pairsFor(id)));
-  // Connect in groups, as a crowd of browsers would, rather than all in one instant.
-  for (let i = 0; i < clients.length; i += 50) await Promise.all(clients.slice(i, i + 50).map((c) => c.start(url)));
+  for (let i = 0; i < clients.length; i += wave) await Promise.all(clients.slice(i, i + wave).map((c) => c.start(url)));
   return {
     finish(summary: PublishedSummary): ClientsReport {
       const latency = new Array<number>(LATENCY_BUCKETS).fill(0);

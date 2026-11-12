@@ -171,7 +171,7 @@ function inProcess(url: string, ids: number[]): ClientGroup {
   };
 }
 
-function childProcess(url: string, ids: number[]): ClientGroup {
+function childProcess(url: string, ids: number[], wave: number): ClientGroup {
   const child = fork(new URL('./load-live-worker.ts', import.meta.url), [], { execArgv: process.execArgv });
   let report: (r: ClientsReport) => void = () => {};
   let ready: () => void = () => {};
@@ -181,7 +181,7 @@ function childProcess(url: string, ids: number[]): ClientGroup {
     if (message.kind === 'report' && message.report !== undefined) report(message.report);
     if (message.kind === 'error') failed(new Error(message.error));
   });
-  child.send({ kind: 'start', url, ids });
+  child.send({ kind: 'start', url, ids, wave });
   return {
     ready: new Promise<void>((resolve, reject) => {
       ready = resolve;
@@ -234,7 +234,10 @@ export async function runLoad(options: LoadOptions): Promise<LoadReport> {
     const groups =
       processes === 0
         ? [inProcess(url, ids)]
-        : Array.from({ length: processes }, (_, p) => childProcess(url, ids.filter((id) => id % processes === p)));
+        : Array.from({ length: processes }, (_, p) =>
+            // At most 100 handshakes in flight in all (see runClients).
+            childProcess(url, ids.filter((id) => id % processes === p), Math.max(1, Math.floor(100 / processes))),
+          );
     await Promise.all(groups.map((g) => g.ready));
     log(`${options.clients} clients connected, ${gateway.stats.subscriptions} subscriptions; publishing for ${options.seconds} s at ${speed}x`);
 
