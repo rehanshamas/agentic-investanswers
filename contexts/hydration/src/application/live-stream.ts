@@ -1,6 +1,8 @@
 // The live stream use case (M1-05): trades in, closed 1-minute bars out to
 // the raw store as each minute ends, reconnecting with backoff and recording a
-// gap for every minute a disconnect cost.
+// gap for every minute a disconnect cost. On each tick it also reports the
+// minutes still forming, when they changed (M2-04), so charts tick with
+// trades; those are never stored.
 //
 // Provider-neutral (CLAUDE.md rule 7): it sees a `LiveTradesPort` and a
 // `LiveRawStorePort`, never a provider. The clock and timers are injected, so
@@ -30,6 +32,8 @@ export type LiveEvent =
   | { readonly kind: 'connected' }
   | { readonly kind: 'disconnected'; readonly reason: string; readonly retryInMs: number }
   | { readonly kind: 'minute'; readonly symbol: string; readonly bar: Bar }
+  /** The minutes still forming, ascending (M2-04). Not stored; a later `minute` event gives the stored bar. */
+  | { readonly kind: 'forming'; readonly symbol: string; readonly bars: readonly Bar[] }
   | { readonly kind: 'gap'; readonly symbol: string; readonly gap: LiveGap }
   | { readonly kind: 'late'; readonly symbol: string }
   | { readonly kind: 'write-failed'; readonly symbol: string; readonly what: string; readonly error: string };
@@ -45,7 +49,7 @@ export interface LiveStreamOptions {
   readonly backoffMaxMs?: number;
   /** A connection that lasted this long resets the backoff. Default 5 min. */
   readonly healthyAfterMs?: number;
-  /** How often minutes are closed and the heartbeat checked. Default 250 ms. */
+  /** How often minutes are closed, forming minutes reported and the heartbeat checked. Default 250 ms. */
   readonly tickMs?: number;
   /** 0..1, for jitter; injected so tests are exact. */
   readonly random?: () => number;
@@ -111,11 +115,12 @@ export class LiveStream {
     await Promise.all(this.writes.values());
   }
 
-  /** Close due minutes and check the connection is alive. Runs on a timer. */
+  /** Close due minutes, report forming ones and check the connection is alive. Runs on a timer. */
   tick(): void {
     if (!this.open) return;
     const now = this.deps.scheduler.now();
     this.closeDue(now);
+    this.reportForming();
     if (now - this.lastAlive > this.options.heartbeatTimeoutMs) {
       this.drop(`no message for ${Math.round((now - this.lastAlive) / 1000)} s`);
     }
@@ -189,6 +194,14 @@ export class LiveStream {
   private closeDue(now: number): void {
     for (const [symbol, builder] of this.builders) {
       for (const bar of builder.closeDue(now, this.options.graceMs)) this.writeMinute(symbol, bar);
+    }
+  }
+
+  /** At most once a tick per symbol, and only when a forming minute changed. */
+  private reportForming(): void {
+    for (const [symbol, builder] of this.builders) {
+      const bars = builder.takeForming();
+      if (bars !== undefined && bars.length > 0) this.emit({ kind: 'forming', symbol, bars });
     }
   }
 

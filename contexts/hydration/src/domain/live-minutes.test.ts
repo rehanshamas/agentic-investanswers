@@ -103,6 +103,55 @@ describe('MinuteBuilder', () => {
   });
 });
 
+describe('MinuteBuilder forming minutes (M2-04)', () => {
+  it('reports the forming minute only when it changed, and it converges on the stored bar', () => {
+    const b = running();
+    expect(b.takeForming()).toBeUndefined();
+    b.add(trade(at(0, 1), 100, 2));
+    expect(b.takeForming()).toEqual([{ time: sec(at(0, 0)), open: 100, high: 100, low: 100, close: 100, volume: 2 }]);
+    expect(b.takeForming()).toBeUndefined(); // nothing new
+    b.add(trade(at(0, 30), 105, 3));
+    b.add(trade(at(0, 50), 95, 1));
+    const forming = b.takeForming();
+    expect(forming).toEqual([{ time: sec(at(0, 0)), open: 100, high: 105, low: 95, close: 95, volume: 6 }]);
+    expect(b.closeDue(at(1, 2), 2000)).toEqual(forming);
+  });
+
+  it('reports a repeated trade as no change', () => {
+    const b = running();
+    b.add(trade(at(0, 1), 100, 1, 7));
+    b.takeForming();
+    expect(b.add(trade(at(0, 1), 100, 1, 7))).toBe('duplicate');
+    expect(b.takeForming()).toBeUndefined();
+  });
+
+  it('reports both minutes during the grace, ascending, and drops a minute once it closes', () => {
+    const b = running();
+    b.add(trade(at(0, 59), 100));
+    b.add(trade(at(1, 0, 500), 200));
+    expect(b.takeForming()?.map((x) => [x.time, x.close])).toEqual([
+      [sec(at(0, 0)), 100],
+      [sec(at(1, 0)), 200],
+    ]);
+    b.add(trade(at(0, 59, 900), 110)); // late but within grace: still the 12:00 minute
+    expect(b.closeDue(at(1, 2), 2000).map((x) => x.close)).toEqual([110]);
+    b.add(trade(at(1, 3), 210));
+    expect(b.takeForming()?.map((x) => [x.time, x.close])).toEqual([[sec(at(1, 0)), 210]]);
+  });
+
+  it('never forms a partial minute, and forgets forming minutes on a disconnect', () => {
+    const b = new MinuteBuilder();
+    b.resume(at(0, 25));
+    b.add(trade(at(0, 26), 100)); // partial: refused
+    expect(b.takeForming()).toBeUndefined();
+    b.add(trade(at(1, 5), 101));
+    b.interrupt();
+    expect(b.takeForming()).toBeUndefined();
+    b.resume(at(2, 30));
+    expect(b.takeForming()).toBeUndefined();
+  });
+});
+
 describe('splitGapByDay', () => {
   it('splits a gap across UTC midnight', () => {
     const from = barTimeFromUtcParts(2026, 11, 10, 23, 58);

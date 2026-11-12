@@ -14,6 +14,10 @@
 // - A minute with no trades has no bar (docs/bar-rules.md, "Missing minute").
 // - Open and close follow the provider's trade order (`seq`), not arrival
 //   order, so trades delivered out of order still give the right open/close.
+// - The minutes still forming can be read as bars (M2-04), so charts tick with
+//   trades. They are the same accumulators `closeDue` turns into stored bars,
+//   so a forming bar converges on the stored one. Only whole minutes form:
+//   a partial minute is refused before it reaches an accumulator.
 //
 // The trade type speaks our language only (CLAUDE.md rule 7): our scaled
 // units, our clock. Every provider adapter converts into it.
@@ -79,6 +83,8 @@ export class MinuteBuilder {
   private closedThrough: number | undefined;
   /** The first whole minute since the last resume; earlier minutes are partial. */
   private firstWhole = 0;
+  /** Whether a forming minute changed since `takeForming` last returned it. */
+  private changed = false;
 
   /**
    * Begin, or begin again after a disconnect, at `nowMs`. The minute in
@@ -88,6 +94,7 @@ export class MinuteBuilder {
   resume(nowMs: number): BarTime {
     const first = firstWholeMinuteFrom(nowMs);
     this.forming.clear();
+    this.changed = false;
     this.closedThrough = first - MINUTE;
     this.firstWhole = first;
     return barTime(first);
@@ -114,10 +121,12 @@ export class MinuteBuilder {
         volume: trade.size,
         seen: new Set([trade.seq]),
       });
+      this.changed = true;
       return 'added';
     }
     if (acc.seen.has(trade.seq)) return 'duplicate';
     acc.seen.add(trade.seq);
+    this.changed = true;
     if (trade.seq < acc.openSeq) {
       acc.openSeq = trade.seq;
       acc.open = trade.price;
@@ -155,12 +164,27 @@ export class MinuteBuilder {
   }
 
   /**
+   * The minutes still forming, as bars, ascending, if any changed since the
+   * last call; otherwise `undefined`. Usually one minute, two during the
+   * grace after a minute ends. Not stored and not final: `closeDue` gives the
+   * stored bar, built from the same trades plus any that arrive late.
+   */
+  takeForming(): Bar[] | undefined {
+    if (!this.changed) return undefined;
+    this.changed = false;
+    return [...this.forming.keys()]
+      .sort((a, b) => a - b)
+      .map((minute) => toBar(minute, this.forming.get(minute) as Accumulator));
+  }
+
+  /**
    * The stream dropped. Minutes not yet closed are partial and discarded.
    * Returns the first minute not covered, where the gap starts, or
    * `undefined` if the stream never ran.
    */
   interrupt(): BarTime | undefined {
     this.forming.clear();
+    this.changed = false;
     const closed = this.closedThrough;
     this.closedThrough = undefined;
     return closed === undefined ? undefined : barTime(closed + MINUTE);
