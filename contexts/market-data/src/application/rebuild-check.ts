@@ -5,21 +5,29 @@
 // check that it still is. It reads raw once per month and rolls it up to every
 // intraday timeframe, the same `rollUp` cooking uses. Calendar timeframes
 // (1D, 1W, 1M) join when M1-08 cooks them.
+//
+// Since M1-15 the store holds settled bars only: those before the
+// instrument's watermark. Bars from the watermark on are rolled up from raw
+// when read, so the check compares only the settled ones.
 
-import type { Instrument, MarketCalendar, Timeframe } from '@aia/shared-kernel';
+import type { Bar, BarTime, Instrument, MarketCalendar, Timeframe } from '@aia/shared-kernel';
 
+import { tailStart } from '../domain/cooked-tail.js';
 import { partitionBounds } from '../domain/cooked-partition.js';
 import type { RebuildDiff } from '../domain/rebuild-diff.js';
 import { diffBars } from '../domain/rebuild-diff.js';
 import { rollUp } from '../domain/roll-up.js';
 import { INTRADAY_ROLLUPS } from './cook-intraday.js';
 import type { CookedBarStorePort } from './cooked-bar-store-port.js';
+import type { CookedWatermarkPort } from './cooked-watermark-port.js';
 import type { OneMinuteBarSourcePort } from './one-minute-bar-source-port.js';
 
 export interface RebuildCheckDeps {
   readonly source: OneMinuteBarSourcePort;
   /** Read only: the check never writes. */
   readonly store: Pick<CookedBarStorePort, 'getPartition'>;
+  /** Each instrument's watermark, if it has one (M1-15). */
+  readonly watermarks?: Pick<CookedWatermarkPort, 'getWatermark'>;
   readonly calendar?: MarketCalendar;
 }
 
@@ -49,15 +57,24 @@ export class RebuildCheck {
     timeframes: readonly Timeframe[] = INTRADAY_ROLLUPS,
   ): Promise<PartitionResult[]> {
     const results: PartitionResult[] = [];
+    const through = await this.deps.watermarks?.getWatermark(instrument.symbol);
+    const settled = (timeframe: Timeframe) => {
+      if (through === undefined) return () => true;
+      const start: BarTime = tailStart(instrument, timeframe, through, this.deps.calendar);
+      return (bar: Bar) => bar.time < start;
+    };
     for (const partition of partitions) {
       const { from, until } = partitionBounds(partition);
+      if (through !== undefined && from >= through) continue;
       const minutes = await this.deps.source.read(instrument.symbol, from, until);
       for (const timeframe of timeframes) {
-        const rebuilt = rollUp(instrument, timeframe, minutes, this.deps.calendar);
-        const stored = await this.deps.store.getPartition(instrument.symbol, timeframe, partition);
-        if (stored === undefined && rebuilt.length === 0) continue;
-        const kind =
-          stored === undefined ? 'not-cooked' : rebuilt.length === 0 ? 'no-raw' : 'compared';
+        const keep = settled(timeframe);
+        const rebuilt = rollUp(instrument, timeframe, minutes, this.deps.calendar).filter(keep);
+        const found = await this.deps.store.getPartition(instrument.symbol, timeframe, partition);
+        const stored = found?.filter(keep);
+        const none = stored === undefined || stored.length === 0;
+        if (none && rebuilt.length === 0) continue;
+        const kind = none ? 'not-cooked' : rebuilt.length === 0 ? 'no-raw' : 'compared';
         results.push({
           symbol: instrument.symbol,
           timeframe,

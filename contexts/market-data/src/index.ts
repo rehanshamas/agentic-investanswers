@@ -122,3 +122,15 @@ export { LIVE_CLOSE_TOO_SLOW, LiveGateway, LiveSession } from './application/liv
 export { MemoryLiveBarsBus } from './adapters/memory-live-bars-bus.js';
 export type { RedisLiveBarsBusOptions } from './adapters/redis-live-bars-bus.js';
 export { LIVE_BARS_CHANNEL, RedisLiveBarsBus } from './adapters/redis-live-bars-bus.js';
+
+// Settled cooked bars plus the tail (M1-15).
+export { tailStart } from './domain/cooked-tail.js';
+export type { CookedWatermarkPort } from './application/cooked-watermark-port.js';
+export type { CookedReaderDeps } from './application/cooked-reader.js';
+export { CookedReader } from './application/cooked-reader.js';
+export type { LiveCookDeps } from './application/live-cook.js';
+export { LiveCook } from './application/live-cook.js';
+export type { CookedCompactorDeps } from './application/cooked-compactor.js';
+export { CookedCompactor } from './application/cooked-compactor.js';
+export { MemoryCookedWatermarks } from './adapters/memory-cooked-watermarks.js';
+export { cookedWatermarkKey } from './adapters/s3-cooked-bar-store.js';
