@@ -25,7 +25,7 @@ export interface IntInput extends InputBase {
   readonly default: number;
   readonly min: number;
   readonly max: number;
-  /** Increment of the dialog's spinner. Defaults to 1. */
+  /** Increment of the dialog's spinner; values must be min + a whole number of steps. Defaults to 1. */
   readonly step?: number;
 }
 
@@ -35,7 +35,7 @@ export interface FloatInput extends InputBase {
   readonly default: number;
   readonly min: number;
   readonly max: number;
-  /** Increment of the dialog's spinner; also the precision the value is kept at. */
+  /** Increment of the dialog's spinner; values must be min + a whole number of steps (checked server-side). */
   readonly step: number;
 }
 
