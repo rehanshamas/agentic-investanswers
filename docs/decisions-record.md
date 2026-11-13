@@ -109,6 +109,10 @@ Settled choices the client may ask about.
 - **What:** the History API compresses large responses (gzip) for browsers and agents that accept it, using `@fastify/compress`, the compression plugin maintained by the Fastify team. Added with the History API (M2-03, #79); confirmed by Sham on 2026-11-13.
 - **Why:** a chart loads thousands of bars at once; compressed, the same response is several times smaller, so charts open faster, especially on mobile.
 
+**D-09 · Live data can be split across several processes** (2026-11-13, M1-15c)
+- **What:** the process that streams live prices can run as several copies, each handling its own share of instruments, assigned automatically or pinned in the feed configuration. Adding copies is how hydration grows with the number of instruments.
+- **Why:** the client's concern is no bottleneck or dead end in the data layer. One process streaming everything was a hard limit; now each instrument has exactly one writer however many processes run, and charts are unaffected (tested with 1,000 browsers and two publishers).
+
 ## Closed
 **P-01 · Data licence and daily bars** (OI-22, due 2026-11-13) · closed 2026-11-13
 - **Was:** open question; meanwhile we kept data permanently and used provider daily bars only if building them from 1-minute bars failed parity.

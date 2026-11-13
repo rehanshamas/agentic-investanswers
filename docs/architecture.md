@@ -17,6 +17,11 @@ Full specification: `analytics-platform-architecture` (project files). This page
   - Readers take an hour file where one exists and minute objects otherwise. A full day reads back in about 24 GETs instead of up to 1,440 (measured on MinIO: 82 against 1,411).
   - Minute objects are never edited or deleted, and the day file still supersedes both.
   - Only hours of days the process streamed are sealed, before compaction reads them.
+- **Live shards (M1-15c).**
+  - `pnpm live --shard i/n` streams only the instruments of shard i of n. Each instrument is in exactly one shard: the one its feed plan entry pins (`"shard": n`), otherwise one chosen by a stable hash of its symbol (FNV-1a).
+  - So each instrument has one writer of its live minutes, hour files and cooked days, and hydration scales out by adding processes.
+  - Start-up refuses a pin beyond n. Run every shard with the same n, and restart them together when n changes.
+  - The live gateway follows each publisher's sequence separately. It resyncs charts on a jump in one publisher's sequence, or when an instrument's announcements move to another publisher (a restarted or rebalanced shard), not when a new shard with its own instruments appears.
 - **Cooked** bars for every timeframe, built only from raw 1-minute bars, Parquet (**snappy**) on S3; always rebuildable. One file per instrument, timeframe and partition: by month for intraday, by year for 1D/1W/1M.
 - **Settled cooked bars plus the tail (M1-15).**
   - **Watermark:** the cooked store holds settled days only. Each instrument has a cooked watermark (`watermarks/<symbol>.json` in the cooked bucket), and every bar built from minutes before it is stored.

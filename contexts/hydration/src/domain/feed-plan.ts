@@ -45,6 +45,8 @@ export interface InstrumentFeeds {
   readonly history: readonly HistorySource[];
   /** Ascending by `from`; empty when the instrument has no live feed yet. */
   readonly live: readonly FeedSource[];
+  /** Pins the instrument to this live shard (1-based, M1-15c); otherwise a hash of its symbol decides. */
+  readonly shard?: number;
 }
 
 export interface FeedPlan {
@@ -148,7 +150,11 @@ export function parseFeedPlan(input: unknown): FeedPlan {
     if (earliest !== undefined && defaultFrom < earliest) {
       throw new FeedPlanError(`${symbol}.defaultFrom ${defaultFrom} is before its first history source (${earliest})`);
     }
-    return { symbol, defaultFrom, history, live };
+    const shard = entry['shard'];
+    if (shard !== undefined && (typeof shard !== 'number' || !Number.isInteger(shard) || shard < 1 || shard > 9_999)) {
+      throw new FeedPlanError(`${symbol}.shard must be a whole number from 1, got ${JSON.stringify(shard)}`);
+    }
+    return { symbol, defaultFrom, history, live, ...(shard === undefined ? {} : { shard }) };
   });
   return { instruments };
 }

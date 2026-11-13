@@ -10,9 +10,13 @@
 // - Order: announcements are handled one at a time, in the order received, and
 //   each session's messages are sent in order. So for each instrument and
 //   timeframe a browser sees updates to a bar in the order they were made.
-// - A missed announcement (a jump in the sequence, a new publisher, or the bus
-//   connection dropping) or a publisher's request sends every session
-//   `resync`, so browsers reload from GET /bars rather than show a wrong bar.
+// - Several hydration processes (shards, M1-15c) may announce at once; each
+//   has its own sequence. A missed announcement (a jump in one publisher's
+//   sequence, or the bus connection dropping), an instrument whose
+//   announcements move to another publisher (a restarted or rebalanced shard:
+//   the old one's forming bars may still be on screen), or a publisher's
+//   request sends every session `resync`, so browsers reload from GET /bars
+//   rather than show a wrong bar.
 // - A session whose socket has more than `maxBufferedBytes` waiting is closed
 //   (1013, try again later): the browser reconnects and resyncs, and the
 //   server never queues without bound for a slow client.
@@ -93,7 +97,10 @@ export class LiveGateway implements LiveBarsListener {
   private readonly maxSubscriptions: number;
   private readonly maxBufferedBytes: number;
   private readonly cancelFlush: () => void;
-  private last: { publisher: string; seq: number } | undefined;
+  /** Per publisher, the last sequence number seen (M1-15c: one per hydration shard). */
+  private readonly sequences = new Map<string, number>();
+  /** Per instrument, the publisher announcing it. */
+  private readonly announcer = new Map<string, string>();
   /** Per instrument, the newest stored 1m bar sent: a forming 1m bar never goes back over it. */
   private readonly stored1m = new Map<string, number>();
 
@@ -128,18 +135,23 @@ export class LiveGateway implements LiveBarsListener {
   }
 
   batch(batch: LiveBatch): void {
-    // A resync on its own from another publisher (a maintenance command that
-    // rewrote bars) leaves the live publisher's sequence alone.
-    if (batch.resync === true && batch.updates.length === 0 && this.last !== undefined && batch.publisher !== this.last.publisher) {
+    const last = this.sequences.get(batch.publisher);
+    if (last === undefined && batch.resync === true && batch.updates.length === 0) {
+      // A resync on its own from a publisher not being followed (a maintenance
+      // command that rewrote bars): resync, and do not follow it.
       this.resyncAll();
       return;
     }
-    const last = this.last;
-    this.last = { publisher: batch.publisher, seq: batch.seq };
-    if (last !== undefined && (batch.publisher !== last.publisher || batch.seq !== last.seq + 1)) {
-      this.resyncAll();
+    // One publisher's announcements arrive in order; a jump means some were missed.
+    let resync = last !== undefined && batch.seq !== last + 1;
+    for (const { symbol } of batch.updates) {
+      const before = this.announcer.get(symbol);
+      if (before !== undefined && before !== batch.publisher) resync = true; // taken over by another process
+      this.announcer.set(symbol, batch.publisher);
     }
-    if (batch.resync === true) this.resyncAll();
+    if (resync || batch.resync === true) this.resyncAll();
+    this.sequences.set(batch.publisher, batch.seq);
+    if (this.sequences.size > 1_000) this.sequences.delete(this.sequences.keys().next().value as string);
 
     for (const update of batch.updates) {
       const instrument = this.instruments.get(update.symbol);
@@ -164,7 +176,7 @@ export class LiveGateway implements LiveBarsListener {
   }
 
   lost(): void {
-    this.last = undefined;
+    this.sequences.clear();
     this.resyncAll();
   }
 
