@@ -65,16 +65,16 @@ This means about 11 tasks a week instead of 9, so you need **3 lanes (3 worktree
 |---|---|---|
 | M2-09 plan checks, M2-10 safeguards, M4-01 agent identity | M2-11 embed, M2-12 themes + mobile, M2-13 preferences | M3-01 indicator interface, M3-03 indicator parity harness, M3-04 engine, M3-06 backtest engine |
 
-**Friday gate (= brief's M2):** M2 is signed off. **ATR source and exports must be in by Monday of this week.** If they aren't, M3 runs on the demo indicator only, and ATR moves to Phase 1, as agreed in the brief.
+**Friday gate (= brief's M2):** M2 is signed off.
 
 ### Week 4 (23 to 27 Nov): M3 indicator at parity + M4 agents
-| Lane A (agents) | Lane B (demo indicator) | Lane C (ATR) |
+| Lane A (agents) | Lane B (SMA indicator) | Lane C (slipped M2 work) |
 |---|---|---|
-| M4-02 MCP tools, M4-03 agent API, M4-04 usage + audit, M4-05 dashboard | M3-02 settings dialog, M3-05 demo indicator end to end, M3-08 leak test | M3-07a values, M3-07b signals, M3-07c backtest |
+| M4-02 MCP tools, M4-03 agent API, M4-04 usage + audit, M4-05 dashboard | M3-02 settings dialog, M3-05 demo indicator end to end, M3-08 leak test | Mainly the chart app: M2-05 chart, M2-06 scroll-back (ATR, M3-07a to M3-07c, is Phase 1; decision record D-11) |
 
-Agent tasks are small and reuse existing queries, so they run beside the ATR port. If the client hasn't decided on agent tokens, use our own scoped read-only keys.
-**Friday gate (= internal MVP complete):** ATR 100% at parity, agents can read through MCP, and M4-06 produces the acceptance report.
-**This is the riskiest week.** If ATR parity isn't 100%, ATR gets the buffer week first.
+Agent tasks are small and reuse existing queries, so they run beside the indicator and chart work. If the client hasn't decided on agent tokens, use our own scoped read-only keys.
+**Friday gate (= internal MVP complete):** the SMA demo indicator and its backtest at 100% parity against its TradingView exports (OI-30), agents can read through MCP, and M4-06 produces the acceptance report.
+**This is the riskiest week.** If indicator or backtest parity isn't 100%, it gets the buffer week first.
 
 ### Week 5 (30 Nov to 4 Dec): buffer and review
 - **Mon to Wed: buffer, in this order:** (1) anything still red on the four checks, (2) slipped tasks, (3) bugs from your own testing. **No new features**, even if the week is free. Extra time goes to tests, freshness numbers and the demo.
@@ -101,7 +101,7 @@ If the buffer is used up before Wednesday of Week 4, tell the client that day wh
 |---|---|---|
 | Stock bars won't match TradingView (sessions, adjustments) | Week 1 Friday parity red on stocks | Fix intraday first, then use provider daily bars (the brief's fallback) |
 | AWS access late | Not there by Wed of Week 2 | Keep using local stand-ins and demo locally; tell the client the same day |
-| ATR source late | Not there by Mon of Week 3 | M3 signed off on the demo indicator; ATR moves to Phase 1 (agreed in the brief) |
+| SMA exports late (OI-30) | Not there by Tue 17 Nov | Indicator and backtest parity wait; build M3-03's harness on a hand-made export meanwhile. (ATR source no longer a risk: Phase 1 since 2026-11-13, D-11) |
 | Agent tokens undecided | No answer by end of Week 4 | Use our own agent API keys, scoped read-only |
 | Scope creep | New asks in the tracker | Put them on the Phase 1 list; only a swap of similar size gets in |
 | Claude Code usage limits | `/usage` above 70% midweek | Drop to 2 lanes and keep the parity and ingest lanes |

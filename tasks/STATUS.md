@@ -1,6 +1,6 @@
 # Task status
 
-Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) and by you when you merge. Statuses: todo, in progress, in review, done, blocked.
+Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) and by you when you merge. Statuses: todo, in progress, in review, done, blocked, Phase 1 (not in the MVP).
 
 | ID | Task | Status | Issue | PR |
 |---|---|---|---|---|
@@ -25,7 +25,7 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M1-12 | Extend the market calendar to 1999-2027 | done | #53 | #70 |
 | M1-13 | Commit parity fixtures, turn on the CI parity job | blocked | #58 |  |
 | M1-14 | Split parity: exact build parity, reported source fidelity | done | #67 | #68 |
-| M1-15 | M1 scale-out: no bottleneck or dead end in the live data path | in review (15a done; 15b, 15c in review) | #81 | #87, #90, #94 |
+| M1-15 | M1 scale-out: no bottleneck or dead end in the live data path | done | #81 | #87, #90, #94 |
 | M1-16 | Data layer boundary: one data-access interface for the rest of the app | todo | #82 |  |
 | M2-01 | CDK staging stack | todo | #18 |  |
 | M2-02 | Cache layer | done | #19 | #77 |
@@ -44,11 +44,11 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M3-02 | Settings schema → settings dialog (generated from the declared inputs, with range limits); part 1 done, part 2 (the dialog) waits on M2-05 | blocked | #32 | #86 |
 | M3-03 | Indicator parity harness | todo | #33 |  |
 | M3-04 | Indicator engine | done | #34 | #89 |
-| M3-05 | Demo indicator end to end (chart, dialog, output types) | todo | #35 |  |
-| M3-06 | Backtest engine (shared): trades, profit, ROI, win rate, totals | in review | #36 | #91 |
-| M3-07a | ATR port, slice 1: plotted values (agentic-investanswers-indicators) | todo | #37 |  |
-| M3-07b | ATR port, slice 2: signals | todo | #38 |  |
-| M3-07c | ATR port, slice 3: backtest | todo | #39 |  |
+| M3-05 | The MVP indicator (SMA) end to end (chart, dialog, output types) | todo | #35 |  |
+| M3-06 | Backtest engine (shared): trades, profit, ROI, win rate, totals | done, parity pending (OI-30) | #36 | #91 |
+| M3-07a | ATR port, slice 1: plotted values (agentic-investanswers-indicators) | Phase 1 | #37 |  |
+| M3-07b | ATR port, slice 2: signals | Phase 1 | #38 |  |
+| M3-07c | ATR port, slice 3: backtest | Phase 1 | #39 |  |
 | M3-08 | Leak test: no internals in API, WebSocket or the browser bundle | todo | #40 |  |
 | M4-01 | Agent identity | todo | #41 |  |
 | M4-02 | Read-only MCP tools | todo | #42 |  |

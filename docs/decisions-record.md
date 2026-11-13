@@ -14,12 +14,6 @@ Where something we were waiting for has not arrived, so we use an agreed alterna
 - **Affects:** everything runs and is tested on local stand-ins: MinIO for S3, Redis, DynamoDB Local. Demos run locally, including the client demo on 2026-11-13. Deployment (M2-01) waits.
 - **Closes when:** access arrives and the staging stack is deployed. Nothing built so far depends on running locally.
 
-**F-02 · Simple moving average stands in for the ATR indicator** (2026-11-13)
-- **Why:** the IA-ATR-Model 2.1 source and its TradingView exports (OI-23) have not arrived.
-- **Affects:** the indicator milestone (M3) is built and proven on a simple moving average.
-- **Design requirement:** the indicator interface and engine must take ATR later as one new indicator, with no change to the engine, the API or the chart.
-- **Closes when:** the ATR source arrives and its port (M3-07a to M3-07c) passes parity. If it is not in by Monday of Week 3, ATR moves to Phase 1, as agreed in the brief.
-
 **F-03 · Stocks are history only, with no live stream** (2026-11-10)
 - **Why:** the current Massive plan refuses WebSocket access, both real time and 15-minute delayed (OI-28).
 - **Affects:** NVDA and TSLA 1-minute history is stored; no live stock bars. Crypto live is unaffected.
@@ -113,7 +107,16 @@ Settled choices the client may ask about.
 - **What:** the process that streams live prices can run as several copies, each handling its own share of instruments, assigned automatically or pinned in the feed configuration. Adding copies is how hydration grows with the number of instruments.
 - **Why:** the client's concern is no bottleneck or dead end in the data layer. One process streaming everything was a hard limit; now each instrument has exactly one writer however many processes run, and charts are unaffected (tested with 1,000 browsers and two publishers).
 
+**D-11 · The MVP indicator is the simple moving average; ATR is Phase 1** (2026-11-13, Sham)
+- **What:** the MVP's indicator milestone (M3) is built and proven on a simple moving average and its demo strategy: plotted on the chart, with its settings dialog and backtest, at 100% parity against its own TradingView exports (OI-30). The IA-ATR-Model 2.1 port (M3-07a to M3-07c) moves to Phase 1.
+- **Why:** Sham decided the MVP uses a simple indicator such as a moving average, so the MVP no longer waits on the ATR source.
+- **Design requirement (kept):** the indicator interface and engine take ATR later as one new indicator, with no change to the engine, the API or the chart.
+
 ## Closed
+**F-02 · Simple moving average stands in for the ATR indicator** (2026-11-13) · closed 2026-11-13
+- **Was:** a fallback: the indicator milestone ran on a simple moving average until the ATR source and exports (OI-23) arrived, with the same design requirement as D-11.
+- **Outcome:** no longer a fallback. Sham decided the same day that the simple moving average is the MVP indicator and ATR is Phase 1 (D-11).
+
 **T-03 · Local developer access mode** (2026-11-11) · closed 2026-11-13 (M2-08)
 - **Was:** with `AIA_DEV_AUTH=1` every request counted as a local user with full access; without it, every request was refused.
 - **Outcome:** the app's own sign-in (T-01) is in place, so without `AIA_DEV_AUTH=1` the platform now requires a signed-in user. The mode stays for local development only, never in staging.

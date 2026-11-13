@@ -76,7 +76,7 @@ The client must be able to change the source of any feed at any time with no har
 - Agents get the default plan until M4-01 links an agent to its user. InvestAnswers billing later is a new adapter behind the same port.
 
 ## Indicator engine (M3-01, M3-04)
-- **One shape for every indicator** (`contexts/indicators`): declared inputs with limits, declared outputs (lines, bands, markers, levels), and `step(state, bar)` that returns a new state and leaves the old one unchanged. ATR later is one new definition (decision record F-02).
+- **One shape for every indicator** (`contexts/indicators`): declared inputs with limits, declared outputs (lines, bands, markers, levels), and `step(state, bar)` that returns a new state and leaves the old one unchanged. ATR (Phase 1) later is one new definition (decision record D-11).
 - **Runs on the server, cached in Redis** by indicator + version + instrument + timeframe + run start + settings. An entry holds the state after the last closed bar, that bar, and the newest 2,000 drawn points. A new closed bar is one step; the forming bar is previewed from the closed state and never cached; a changed last bar (a re-cook) means recompute.
 - **Run start pinned to a grid** of 5,000-bar blocks, starting one block before the newest bar's block, so a run covers 5,000 to 10,000 bars and a run rebuilt after a cache miss draws exactly the same values.
 - **Only drawn points leave:** declared outputs rounded to the instrument's tick. Indicator state stays in the cache, which only the engine reads.
