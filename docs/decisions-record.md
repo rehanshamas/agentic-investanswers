@@ -93,17 +93,17 @@ Settled choices the client may ask about.
 - **What:** the newest bar updates with every trade, at most 4 times a second, not only once a minute.
 - **How it stays safe:** these "forming" bars are never stored, and the stored bar replaces each one a moment after its minute closes. Charts are told to reload whenever they might differ from the store.
 
-**D-06 · Stored bars are written once a day, not every minute** (2026-11-13, M1-15)
-- **What:** live bars are built in memory as each minute closes. Each completed day is written to storage once. The newest part, since the last completed day, is built from the stored 1-minute data when read, with the same rules.
-- **Why:** the client's top concern is no bottleneck in the data layer. Measured at 500 instruments, the previous design rewrote each instrument's monthly files every minute: about 100 MB uploaded a minute, bars reaching charts about 53 s late, and about $600 a month in storage requests alone. Now it is one small write per instrument per minute.
-- **Swap later:** the reading side is one interface, so a different storage layout or a separate data service can replace it without changing the rest of the app (see T-05).
-
 **D-05 · The repository is public until NDA material arrives** (2026-11-01)
 - **What:** it goes private (GitHub Pro) before the ATR source (OI-23) is added, so NDA code never sits in a public repository.
 
 **D-06 · Chart library: KLineChart** (2026-11-12)
 - **What:** the chart uses KLineChart, free and open source (Apache 2.0), with its built-in indicators turned off; our own indicator engine draws everything. Research charts (backtests, comparisons) will use Apache ECharts.
 - **Why:** the client wants no TradingView libraries. KLineChart is the strongest free open-source library built for price bars, and suits an indicators and research platform.
+
+**D-07 · Stored bars are written once a day, not every minute** (2026-11-13, M1-15)
+- **What:** live bars are built in memory as each minute closes. Each completed day is written to storage once. The newest part, since the last completed day, is built from the stored 1-minute data when read, with the same rules.
+- **Why:** the client's top concern is no bottleneck in the data layer. Measured at 500 instruments, the previous design rewrote each instrument's monthly files every minute: about 100 MB uploaded a minute, bars reaching charts about 53 s late, and about $600 a month in storage requests alone. Now it is one small write per instrument per minute.
+- **Swap later:** the reading side is one interface, so a different storage layout or a separate data service can replace it without changing the rest of the app (see T-05).
 
 **D-08 · API responses are compressed** (2026-11-13)
 - **What:** the History API compresses large responses (gzip) for browsers and agents that accept it, using `@fastify/compress`, the compression plugin maintained by the Fastify team. Added with the History API (M2-03, #79); confirmed by Sham on 2026-11-13.
