@@ -98,5 +98,9 @@ Settled choices the client may ask about.
 **D-05 · The repository is public until NDA material arrives** (2026-11-01)
 - **What:** it goes private (GitHub Pro) before the ATR source (OI-23) is added, so NDA code never sits in a public repository.
 
+**D-06 · Chart library: KLineChart** (2026-11-12)
+- **What:** the chart uses KLineChart, free and open source (Apache 2.0), with its built-in indicators turned off; our own indicator engine draws everything. Research charts (backtests, comparisons) will use Apache ECharts.
+- **Why:** the client wants no TradingView libraries. KLineChart is the strongest free open-source library built for price bars, and suits an indicators and research platform.
+
 ## Closed
 None yet.
