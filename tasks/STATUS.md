@@ -34,8 +34,8 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M2-05 | Chart app | todo | #22 |  |
 | M2-06 | Scroll-back paging, smooth loading of older history | todo | #23 |  |
 | M2-07 | Freshness checker | todo | #24 |  |
-| M2-08 | The app's own sign-up and sign-in (InvestAnswers sign-in later) | in review | #25 | #92 |
-| M2-09 | Plan-based access on placeholder plans | in review | #26 |  |
+| M2-08 | The app's own sign-up and sign-in (InvestAnswers sign-in later) | done | #25 | #92 |
+| M2-09 | Plan-based access on placeholder plans | done | #26 | #95 |
 | M2-10 | Safeguards | todo | #27 |  |
 | M2-11 | Embed in the InvestAnswers site (iframe or web component), domain-locked | todo | #28 |  |
 | M2-12 | Themes (light and dark) and mobile layout | todo | #29 |  |
@@ -43,7 +43,7 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M3-01 | IndicatorDefinition interface | done | #31 | #85 |
 | M3-02 | Settings schema → settings dialog (generated from the declared inputs, with range limits); part 1 done, part 2 (the dialog) waits on M2-05 | blocked | #32 | #86 |
 | M3-03 | Indicator parity harness | todo | #33 |  |
-| M3-04 | Indicator engine | in review | #34 | #89 |
+| M3-04 | Indicator engine | done | #34 | #89 |
 | M3-05 | Demo indicator end to end (chart, dialog, output types) | todo | #35 |  |
 | M3-06 | Backtest engine (shared): trades, profit, ROI, win rate, totals | in review | #36 | #91 |
 | M3-07a | ATR port, slice 1: plotted values (agentic-investanswers-indicators) | todo | #37 |  |
