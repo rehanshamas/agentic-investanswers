@@ -286,7 +286,7 @@ async function main(): Promise<void> {
       }),
       '(ordinary minutes × 1,440 + one compaction a day; S3 Standard list prices, us-east-1: $0.005 per 1,000 writes and lists,',
       ' $0.0004 per 1,000 reads; requests only, not storage. Compaction here reads a few live minutes per day; a full day of',
-      ' live minutes is up to 1,440 GETs until M1-15b adds hour files.)',
+      ' live minutes reads as about 24 hour files plus the hour in progress (M1-15b).)',
       '',
       `Minute close to announced: ordinary minutes p50 ${n(percentile(ordinaryTimes, 0.5))} ms, p95 ${n(percentile(ordinaryTimes, 0.95))} ms` +
         (busyTimes.length === 0 ? '.' : `; during compaction p50 ${n(percentile(busyTimes, 0.5))} ms, p95 ${n(percentile(busyTimes, 0.95))} ms.`),

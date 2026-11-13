@@ -13,18 +13,30 @@ import type { LiveHourStorePort } from './live-hour-store-port.js';
 import type { RawDayRef } from './raw-bar-store-port.js';
 
 /** `empty`: no minute was stored in that hour, so there is nothing to seal. */
+/** Per hour asked about. `empty`: no minute was stored in it, so there is nothing to seal. */
 export type SealOutcome = 'sealed' | 'already-sealed' | 'empty';
 
 export class LiveHourSealer {
   constructor(private readonly store: LiveHourStorePort) {}
 
-  async seal(ref: RawDayRef, hour: number, known: readonly Bar[]): Promise<SealOutcome> {
-    const stored = await this.store.liveMinuteTimes(ref, hour);
-    if (stored.length === 0) return 'empty';
-    const from = dayStart(ref.date) + hour * 3_600;
-    const mine = known.filter((b) => b.time >= from && b.time < from + 3_600).sort((a, b) => a.time - b.time);
-    const same = mine.length === stored.length && mine.every((b, i) => b.time === stored[i]);
-    const bars = same ? mine : await this.store.getLiveMinutesOfHour(ref, hour);
-    return (await this.store.putLiveHour(ref, hour, bars)) ? 'sealed' : 'already-sealed';
+  /** Seal the given ended hours of one day, from one index of what is stored. */
+  async seal(ref: RawDayRef, hours: readonly number[], known: readonly Bar[]): Promise<Map<number, SealOutcome>> {
+    const { minuteTimes, sealedHours } = await this.store.liveDayIndex(ref);
+    const start = dayStart(ref.date);
+    const outcomes = new Map<number, SealOutcome>();
+    await Promise.all(
+      hours.map(async (hour) => {
+        if (sealedHours.has(hour)) return outcomes.set(hour, 'already-sealed');
+        const from = start + hour * 3_600;
+        const inHour = (t: number) => t >= from && t < from + 3_600;
+        const stored = minuteTimes.filter(inHour);
+        if (stored.length === 0) return outcomes.set(hour, 'empty');
+        const mine = known.filter((b) => inHour(b.time)).sort((a, b) => a.time - b.time);
+        const same = mine.length === stored.length && mine.every((b, i) => b.time === stored[i]);
+        const bars = same ? mine : await this.store.getLiveMinutesOfHour(ref, hour);
+        return outcomes.set(hour, (await this.store.putLiveHour(ref, hour, bars)) ? 'sealed' : 'already-sealed');
+      }),
+    );
+    return outcomes;
   }
 }

@@ -44,8 +44,10 @@ class MemoryHours implements LiveHourStorePort {
     const from = Date.parse(`${ref.date}T00:00:00Z`) / 1000 + hour * 3_600;
     return (await this.raw.getLiveMinutes(ref)).filter((b) => b.time >= from && b.time < from + 3_600);
   }
-  async liveMinuteTimes(ref: RawDayRef, hour: number): Promise<BarTime[]> {
-    return (await this.inHour(ref, hour)).map((b) => b.time).sort((a, b) => a - b);
+  async liveDayIndex(ref: RawDayRef): Promise<{ minuteTimes: BarTime[]; sealedHours: Set<number> }> {
+    const minuteTimes = (await this.raw.getLiveMinutes(ref)).map((b) => b.time).sort((a, b) => a - b);
+    const sealedHours = new Set([...this.files.keys()].filter((k) => k.startsWith(`${ref.symbol}/${ref.date}/`)).map((k) => Number(k.split('/')[2])));
+    return { minuteTimes, sealedHours };
   }
   getLiveMinutesOfHour(ref: RawDayRef, hour: number): Promise<Bar[]> {
     return this.inHour(ref, hour);

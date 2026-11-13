@@ -58,7 +58,14 @@ describe.skipIf(!available)('live hour files on MinIO (M1-15b)', () => {
 
     // The live process seals the 23 ended hours; 23:00 is still in progress.
     const sealer = new LiveHourSealer(store);
-    for (let hour = 0; hour < 23; hour++) expect(await sealer.seal(ref(), hour, day)).toBe('sealed');
+    const hours = Array.from({ length: 23 }, (_, h) => h);
+    let outcomes = new Map();
+    const sealing = await requests(async () => (outcomes = await sealer.seal(ref(), hours, day)));
+    expect([...outcomes.values()]).toEqual(hours.map(() => 'sealed'));
+    // One index of the day, whatever the number of hours: the hour files (1 LIST) and the
+    // minute objects (S3 pages listings at 1,000 keys, so 2 LISTs for 1,411), then one PUT per hour.
+    expect(sealing['ListObjectsV2Command']).toBe(3);
+    expect(sealing['PutObjectCommand']).toBe(23);
 
     let after: Bar[] = [];
     const sealed = await requests(async () => (after = await store.getLiveMinutes(ref())));
@@ -72,8 +79,8 @@ describe.skipIf(!available)('live hour files on MinIO (M1-15b)', () => {
     const bars = [minute(60), minute(61), minute(62)];
     for (const b of bars) await store.putLiveMinute(ref('ETHUSD'), b);
     const sealer = new LiveHourSealer(store);
-    expect(await sealer.seal(ref('ETHUSD'), 1, bars)).toBe('sealed');
-    expect(await sealer.seal(ref('ETHUSD'), 1, bars)).toBe('already-sealed');
+    expect((await sealer.seal(ref('ETHUSD'), [1], bars)).get(1)).toBe('sealed');
+    expect((await sealer.seal(ref('ETHUSD'), [1], bars)).get(1)).toBe('already-sealed');
     expect(await store.putLiveHour(ref('ETHUSD'), 1, [minute(60)])).toBe(false);
     expect(await store.getLiveMinutes(ref('ETHUSD'))).toEqual(bars);
   });
@@ -83,9 +90,9 @@ describe.skipIf(!available)('live hour files on MinIO (M1-15b)', () => {
     for (const b of bars) await store.putLiveMinute(ref('SOLUSD'), b);
     const sealer = new LiveHourSealer(store);
     // The process missed 02:01 (another run stored it): the stored three go in the hour file.
-    expect(await sealer.seal(ref('SOLUSD'), 2, [minute(120), minute(122)])).toBe('sealed');
+    expect((await sealer.seal(ref('SOLUSD'), [2], [minute(120), minute(122)])).get(2)).toBe('sealed');
     expect(await store.getLiveMinutes(ref('SOLUSD'))).toEqual(bars);
-    expect(await sealer.seal(ref('SOLUSD'), 3, [])).toBe('empty');
+    expect((await sealer.seal(ref('SOLUSD'), [3], [])).get(3)).toBe('empty');
   });
 
   it('refuses an hour file with a minute outside its hour, and names keys by hour', async () => {

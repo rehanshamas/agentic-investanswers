@@ -191,13 +191,17 @@ export class S3RawBarStore implements RawBarStorePort, LiveRawStorePort, LiveHou
     return this.readAll(keys);
   }
 
-  async liveMinuteTimes(ref: RawDayRef, hour: number): Promise<BarTime[]> {
-    const keys = await listKeys(this.client, this.bucket, `${livePrefix(ref)}${String(hour).padStart(2, '0')}`);
-    return keys
+  async liveDayIndex(ref: RawDayRef): Promise<{ minuteTimes: BarTime[]; sealedHours: Set<number> }> {
+    const [hourKeys, minuteKeys] = await Promise.all([
+      listKeys(this.client, this.bucket, liveHourPrefix(ref)),
+      listKeys(this.client, this.bucket, livePrefix(ref)),
+    ]);
+    const minuteTimes = minuteKeys
       .map((key) => /(\d{2})(\d{2})\.parquet$/.exec(key))
       .filter((m): m is RegExpExecArray => m !== null)
       .map((m) => barTime(dayStart(ref.date) + Number(m[1]) * 3_600 + Number(m[2]) * 60))
       .sort((a, b) => a - b);
+    return { minuteTimes, sealedHours: new Set(hourKeys.map((key) => Number(keyHour(key)))) };
   }
 
   async getLiveMinutesOfHour(ref: RawDayRef, hour: number): Promise<Bar[]> {

@@ -14,8 +14,12 @@ import type { Bar, BarTime } from '@aia/shared-kernel';
 import type { RawDayRef } from './raw-bar-store-port.js';
 
 export interface LiveHourStorePort {
-  /** The times of the live minute objects stored for one hour (0 to 23) of the day, ascending. One LIST. */
-  liveMinuteTimes(ref: RawDayRef, hour: number): Promise<BarTime[]>;
+  /**
+   * What is stored for the day's live minutes: every minute object's time,
+   * ascending, and the hours (0 to 23) that already have an hour file. Two
+   * LISTs, whatever the number of hours asked about.
+   */
+  liveDayIndex(ref: RawDayRef): Promise<{ readonly minuteTimes: readonly BarTime[]; readonly sealedHours: ReadonlySet<number> }>;
   /** The live minute objects of one hour, read one by one. */
   getLiveMinutesOfHour(ref: RawDayRef, hour: number): Promise<Bar[]>;
   /** Write the hour file once. `false` if it already exists. */

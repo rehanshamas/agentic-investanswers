@@ -264,19 +264,17 @@ export class LivePipeline {
     }
     if (this.sealer === undefined) return;
     const hourNow = Math.floor((minute.time % 86_400) / 3_600);
-    const due: Array<{ date: string; hour: number }> = [];
-    if (this.daysStreamed.has(`${stream}/${yesterday}`)) for (let hour = 0; hour < 24; hour++) due.push({ date: yesterday, hour });
-    for (let hour = 0; hour < hourNow; hour++) due.push({ date: today, hour });
-    const sealer = this.sealer;
-    await Promise.all(
-      due
-        .filter(({ date, hour }) => !this.sealedHours.has(`${stream}/${date}/${hour}`))
-        .map(async ({ date, hour }) => {
-          const ref = { provider, symbol, date };
-          await sealer.seal(ref, hour, await this.liveDay(ref));
-          this.sealedHours.add(`${stream}/${date}/${hour}`);
-        }),
-    );
+    const days: Array<{ date: string; hours: number[] }> = [];
+    if (this.daysStreamed.has(`${stream}/${yesterday}`)) days.push({ date: yesterday, hours: Array.from({ length: 24 }, (_, h) => h) });
+    days.push({ date: today, hours: Array.from({ length: hourNow }, (_, h) => h) });
+    for (const { date, hours } of days) {
+      const due = hours.filter((hour) => !this.sealedHours.has(`${stream}/${date}/${hour}`));
+      if (due.length === 0) continue;
+      const ref = { provider, symbol, date };
+      // One index of the day for all its due hours (M1-15b).
+      await this.sealer.seal(ref, due, await this.liveDay(ref));
+      for (const hour of due) this.sealedHours.add(`${stream}/${date}/${hour}`);
+    }
   }
 
   private liveDay(ref: RawDayRef): Promise<Bar[]> {
