@@ -27,7 +27,7 @@ export type {
   OutputSpec,
   OutputValue,
 } from './domain/outputs.js';
-export { OutputError, toDrawn } from './domain/outputs.js';
+export { MARKER_TEXT_MAX, OutputError, toDrawn } from './domain/outputs.js';
 
 export type { IndicatorBar, IndicatorDefinition, StepResult } from './domain/indicator-definition.js';
 export { IndicatorDefinitionError, assertValidDefinition } from './domain/indicator-definition.js';

@@ -69,15 +69,20 @@ export interface DrawnPoint {
 
 export class OutputError extends Error {}
 
+/** Longest marker label drawn; longer labels are cut. Enough for "Buy", "Sell", "Exit long". */
+export const MARKER_TEXT_MAX = 16;
+
 function round(value: number, priceScale: number, where: string): number | null {
   if (Number.isNaN(value)) return null;
   if (!Number.isFinite(value)) throw new OutputError(`${where} is not a finite number: ${value}`);
-  // Round to the tick the way TradingView's math.round_to_mintick does
-  // (round(value / tick) * tick, ties up), so plotted values can be compared
-  // "to the tick" in the parity harness (M3-03). toFixed would round 60200.005
-  // down, because its binary value is a hair below the tie.
+  // Round to the tick, ties up, as TradingView's math.round_to_mintick
+  // intends (round(value / tick) * tick), so plotted values can be compared
+  // "to the tick" in the parity harness (M3-03). Multiplying a half-tick value
+  // such as 1.005 by 100 gives 100.49999999999999, so the product is first cut
+  // to 15 significant digits (the most a float64 holds exactly in decimal),
+  // which puts it back on the tie: 1.005 -> 1.01, 0.145 -> 0.15.
   const factor = 10 ** priceScale;
-  const rounded = Math.round(value * factor) / factor;
+  const rounded = Math.round(Number((value * factor).toPrecision(15))) / factor;
   return Object.is(rounded, -0) ? 0 : rounded;
 }
 
@@ -107,7 +112,8 @@ function drawnValue(spec: OutputSpec, value: OutputValue | undefined, priceScale
       }
       const markerPrice = round(value.price, priceScale, `${where}.price`);
       if (markerPrice === null) return null;
-      const text = typeof value.text === 'string' ? value.text : undefined;
+      // Capped, so a marker label cannot carry internal values out (rule 5).
+      const text = typeof value.text === 'string' ? value.text.slice(0, MARKER_TEXT_MAX) : undefined;
       return text === undefined ? { side: value.side, price: markerPrice } : { side: value.side, price: markerPrice, text };
     }
   }
