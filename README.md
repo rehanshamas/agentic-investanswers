@@ -5,6 +5,7 @@ Agent-first analytics and charting platform for InvestAnswers. MVP: 2 Nov to 27 
 ## Start here
 1. Install Node 22, pnpm 10, Docker, and Claude Code (VS Code extension or CLI).
 2. `pnpm install`, `cp .env.example .env` and fill in the provider keys, then `docker compose up -d`.
+   To browse local storage (raw and cooked bars), open http://127.0.0.1:9002. It is read-only: it can list and download, never upload or delete.
 3. Open Claude Code in this folder. It shows what you still owe (`docs/owner-inputs.md`) and the task status.
 4. `/start-task <ID>` to begin a task, `/handoff` before you stop, `/resume-task <ID>` in a fresh session, `/status` any time.
 
