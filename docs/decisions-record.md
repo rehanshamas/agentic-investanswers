@@ -10,8 +10,8 @@ Last updated: 2026-11-13.
 Where something we were waiting for has not arrived, so we use an agreed alternative.
 
 **F-01 · Local environment instead of AWS staging** (2026-11-13)
-- **Why:** AWS account access (owner input OI-20, due 2026-11-10) has not arrived. Expected 2026-11-14.
-- **Affects:** everything runs and is tested on local stand-ins: MinIO for S3, Redis, DynamoDB Local. Demos run locally. Deployment (M2-01) waits.
+- **Why:** AWS account access (owner input OI-20, due 2026-11-10) has not arrived. Sham confirmed on 2026-11-13 that everything stays local until it does.
+- **Affects:** everything runs and is tested on local stand-ins: MinIO for S3, Redis, DynamoDB Local. Demos run locally, including the client demo on 2026-11-13. Deployment (M2-01) waits.
 - **Closes when:** access arrives and the staging stack is deployed. Nothing built so far depends on running locally.
 
 **F-02 · Simple moving average stands in for the ATR indicator** (2026-11-13)
@@ -101,6 +101,10 @@ Settled choices the client may ask about.
 **D-06 · Chart library: KLineChart** (2026-11-12)
 - **What:** the chart uses KLineChart, free and open source (Apache 2.0), with its built-in indicators turned off; our own indicator engine draws everything. Research charts (backtests, comparisons) will use Apache ECharts.
 - **Why:** the client wants no TradingView libraries. KLineChart is the strongest free open-source library built for price bars, and suits an indicators and research platform.
+
+**D-08 · API responses are compressed** (2026-11-13)
+- **What:** the History API compresses large responses (gzip) for browsers and agents that accept it, using `@fastify/compress`, the compression plugin maintained by the Fastify team. Added with the History API (M2-03, #79); confirmed by Sham on 2026-11-13.
+- **Why:** a chart loads thousands of bars at once; compressed, the same response is several times smaller, so charts open faster, especially on mobile.
 
 ## Closed
 None yet.
