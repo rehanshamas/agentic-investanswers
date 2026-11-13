@@ -129,6 +129,7 @@ async function main(): Promise<void> {
     liveProviderOf: liveProviderOf(feedPlan),
     cooked: stores.cooked,
     watermarks: stores.cooked,
+    hours: stores.raw,
     cache: redis,
     bus: liveBus,
     publisher: `live-${randomUUID()}`,

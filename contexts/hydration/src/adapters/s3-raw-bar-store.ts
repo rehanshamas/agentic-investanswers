@@ -8,6 +8,7 @@ import type { S3Client } from '@aws-sdk/client-s3';
 import type { Bar, BarTime } from '@aia/shared-kernel';
 import { barTime } from '@aia/shared-kernel';
 
+import type { LiveHourStorePort } from '../application/live-hour-store-port.js';
 import type { LiveRawStorePort } from '../application/live-raw-store-port.js';
 import { LiveMinuteAlreadyStoredError } from '../application/live-raw-store-port.js';
 import type { RawBarStorePort, RawDayRef } from '../application/raw-bar-store-port.js';
@@ -59,6 +60,24 @@ function livePrefix(ref: RawDayRef): string {
   return rawDayKey(ref).replace(/\.parquet$/, '.live/');
 }
 
+function liveHourPrefix(ref: RawDayRef): string {
+  return rawDayKey(ref).replace(/\.parquet$/, '.live-hours/');
+}
+
+/**
+ * Object key for one hour of live minutes (M1-15b), written once the hour has ended:
+ * `raw/<provider>/<symbol>/<YYYY>/<MM>/<DD>.live-hours/<HH>.parquet`.
+ */
+export function rawLiveHourKey(ref: RawDayRef, hour: number): string {
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) throw new RawStoreError(`hour must be 0 to 23, got ${hour}`);
+  return `${liveHourPrefix(ref)}${String(hour).padStart(2, '0')}.parquet`;
+}
+
+/** The `HH` of a live minute or hour key. */
+function keyHour(key: string): string {
+  return /\/(\d{2})(?:\d{2})?\.parquet$/.exec(key)?.[1] ?? '';
+}
+
 function liveGapPrefix(ref: RawDayRef): string {
   return rawDayKey(ref).replace(/\.parquet$/, '.live-gaps/');
 }
@@ -85,7 +104,7 @@ function assertWithinDay(ref: RawDayRef, from: number, until: number, what: stri
   }
 }
 
-export class S3RawBarStore implements RawBarStorePort, LiveRawStorePort {
+export class S3RawBarStore implements RawBarStorePort, LiveRawStorePort, LiveHourStorePort {
   private readonly client: S3Client;
   private readonly bucket: string;
 
@@ -157,15 +176,54 @@ export class S3RawBarStore implements RawBarStorePort, LiveRawStorePort {
     }
   }
 
+  /**
+   * Every live minute of the day: an hour's file where it exists (M1-15b),
+   * otherwise that hour's minute objects. A whole sealed day is about 24 GETs
+   * instead of 1,440.
+   */
   async getLiveMinutes(ref: RawDayRef): Promise<Bar[]> {
-    const keys = await listKeys(this.client, this.bucket, livePrefix(ref));
-    const bars: Bar[] = [];
-    // A full day is 1,440 small objects; fetch them a batch at a time.
+    const [hourKeys, minuteKeys] = await Promise.all([
+      listKeys(this.client, this.bucket, liveHourPrefix(ref)),
+      listKeys(this.client, this.bucket, livePrefix(ref)),
+    ]);
+    const sealed = new Set(hourKeys.map(keyHour));
+    const keys = [...hourKeys, ...minuteKeys.filter((key) => !sealed.has(keyHour(key)))];
+    return this.readAll(keys);
+  }
+
+  async liveDayIndex(ref: RawDayRef): Promise<{ minuteTimes: BarTime[]; sealedHours: Set<number> }> {
+    const [hourKeys, minuteKeys] = await Promise.all([
+      listKeys(this.client, this.bucket, liveHourPrefix(ref)),
+      listKeys(this.client, this.bucket, livePrefix(ref)),
+    ]);
+    const minuteTimes = minuteKeys
+      .map((key) => /(\d{2})(\d{2})\.parquet$/.exec(key))
+      .filter((m): m is RegExpExecArray => m !== null)
+      .map((m) => barTime(dayStart(ref.date) + Number(m[1]) * 3_600 + Number(m[2]) * 60))
+      .sort((a, b) => a - b);
+    return { minuteTimes, sealedHours: new Set(hourKeys.map((key) => Number(keyHour(key)))) };
+  }
+
+  async getLiveMinutesOfHour(ref: RawDayRef, hour: number): Promise<Bar[]> {
+    return this.readAll(await listKeys(this.client, this.bucket, `${livePrefix(ref)}${String(hour).padStart(2, '0')}`));
+  }
+
+  async putLiveHour(ref: RawDayRef, hour: number, bars: readonly Bar[]): Promise<boolean> {
+    const from = dayStart(ref.date) + hour * 3_600;
+    for (const bar of bars) assertWithinDay(ref, bar.time, bar.time + 60, 'Live hour minute');
+    if (bars.some((b) => b.time < from || b.time >= from + 3_600)) throw new RawStoreError(`Live hour ${ref.date} ${hour}: a minute outside the hour`);
+    assertStorableRawDay(ref.date, bars);
+    return putIfAbsent(this.client, this.bucket, rawLiveHourKey(ref, hour), await encodeBars(bars));
+  }
+
+  /** Read and merge objects of live minutes, a batch at a time; ascending, one bar per time. */
+  private async readAll(keys: readonly string[]): Promise<Bar[]> {
+    const byTime = new Map<number, Bar>();
     for (let i = 0; i < keys.length; i += 32) {
       const batch = await Promise.all(keys.slice(i, i + 32).map((key) => get(this.client, this.bucket, key)));
-      for (const bytes of batch) if (bytes !== undefined) bars.push(...(await decodeBars(bytes)));
+      for (const bytes of batch) if (bytes !== undefined) for (const bar of await decodeBars(bytes)) byTime.set(bar.time, bar);
     }
-    return bars.sort((a, b) => a.time - b.time);
+    return [...byTime.values()].sort((a, b) => a.time - b.time);
   }
 
   async putLiveGap(ref: RawDayRef, gap: LiveGap): Promise<void> {

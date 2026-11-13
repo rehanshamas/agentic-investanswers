@@ -83,3 +83,9 @@ export { rawLiveGapKey, rawLiveMinuteKey } from './adapters/s3-raw-bar-store.js'
 export type { ProviderOf } from './application/raw-minute-source.js';
 export { RawMinuteSource, liveProviderOf, rawProviderOf } from './application/raw-minute-source.js';
 export { loadFeedPlan } from './adapters/feed-plan-file.js';
+
+// Hour files for live minutes (M1-15b).
+export type { LiveHourStorePort } from './application/live-hour-store-port.js';
+export type { SealOutcome } from './application/live-hour-sealer.js';
+export { LiveHourSealer } from './application/live-hour-sealer.js';
+export { rawLiveHourKey } from './adapters/s3-raw-bar-store.js';

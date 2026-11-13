@@ -11,9 +11,13 @@
 // written by the compactor, and readers roll up the rest from raw. The first
 // minute of each UTC day, and the first after start, sets off compaction for
 // that instrument in the background; it never holds up a minute.
+//
+// Once an hour has ended, its live minutes are also written as one hour file
+// (M1-15b), so reading a day of them costs about 24 GETs, not 1,440. Hours are
+// sealed for the days this process has streamed, before compaction reads them.
 
-import type { ProviderOf, RawDayRef } from '@aia/hydration';
-import { RawMinuteSource } from '@aia/hydration';
+import type { LiveHourStorePort, ProviderOf, RawDayRef } from '@aia/hydration';
+import { LiveHourSealer, RawMinuteSource } from '@aia/hydration';
 import type { CookedBarStorePort, CookedWatermarkPort, LiveBarUpdate, LiveBarsBusPort, RecentBarsCachePort } from '@aia/market-data';
 import {
   CookIntraday,
@@ -27,7 +31,7 @@ import {
   barClosedEvents,
 } from '@aia/market-data';
 import type { Bar, Instrument, MarketCalendar, Timeframe } from '@aia/shared-kernel';
-import { barTime, zonedDateKey } from '@aia/shared-kernel';
+import { addDays, barTime, zonedDateKey } from '@aia/shared-kernel';
 
 import { CACHED_TIMEFRAMES } from './cache.js';
 
@@ -39,6 +43,8 @@ export interface LivePipelineDeps {
   };
   readonly rawProviderOf: ProviderOf;
   readonly liveProviderOf: ProviderOf;
+  /** Hour files for live minutes (M1-15b); without it, hours are not sealed. */
+  readonly hours?: LiveHourStorePort;
   readonly cooked: CookedBarStorePort;
   readonly watermarks: CookedWatermarkPort;
   readonly cache: RecentBarsCachePort;
@@ -64,6 +70,10 @@ export class LivePipeline {
   private readonly forming: ReadonlyMap<string, FormingBars>;
   /** Today's live minutes, held in memory once read, so cooking a new minute does not list the day again. */
   private readonly liveDays = new Map<string, Promise<Bar[]>>();
+  private readonly sealer: LiveHourSealer | undefined;
+  /** Hours already sealed (or found empty), and the days streamed, per provider and instrument. */
+  private readonly sealedHours = new Set<string>();
+  private readonly daysStreamed = new Set<string>();
   private readonly cooks: ReadonlyMap<string, LiveCook>;
   private readonly compactor: CookedCompactor;
   /** Per instrument, the UTC day compaction last ran for, and the run in progress. */
@@ -108,6 +118,7 @@ export class LivePipeline {
     });
     this.recent = new RecentBars({ cache: deps.cache, store: reader, minutes });
     this.announcer = new LiveAnnouncer(deps.bus, deps.publisher);
+    this.sealer = deps.hours === undefined ? undefined : new LiveHourSealer(deps.hours);
   }
 
   /** The minutes not yet stored changed. */
@@ -174,6 +185,10 @@ export class LivePipeline {
           },
         );
     }
+    // Then seal hours that have ended, before compaction (set off below) reads them.
+    next = next
+      .then(() => this.sealEndedHours(provider, symbol, bar))
+      .catch((error: unknown) => this.deps.log(`${symbol}: sealing an hour of live minutes failed, retried next minute: ${String(error)}`));
     this.chains.set(symbol, next);
     if (instrument.kind !== 'stock') void next.then(() => this.compactIfNewDay(instrument, bar));
     return next;
@@ -228,6 +243,38 @@ export class LivePipeline {
   async settled(): Promise<void> {
     await Promise.all(this.chains.values());
     await this.compactions();
+  }
+
+  /**
+   * Seal every ended hour of the days this process streamed for the
+   * instrument (today's hours before this minute's, and all of yesterday's),
+   * and forget minutes held for older days.
+   */
+  private async sealEndedHours(provider: string, symbol: string, minute: Bar): Promise<void> {
+    const today = zonedDateKey(minute.time, 'UTC');
+    const yesterday = addDays(today, -1);
+    const stream = `${provider}/${symbol}`;
+    this.daysStreamed.add(`${stream}/${today}`);
+    for (const key of [...this.liveDays.keys()]) {
+      const date = key.slice(key.lastIndexOf('/') + 1);
+      if (key.startsWith(`${stream}/`) && date < yesterday) this.liveDays.delete(key);
+    }
+    for (const set of [this.sealedHours, this.daysStreamed]) {
+      for (const key of [...set]) if (key.startsWith(`${stream}/`) && key.split('/')[2]! < yesterday) set.delete(key);
+    }
+    if (this.sealer === undefined) return;
+    const hourNow = Math.floor((minute.time % 86_400) / 3_600);
+    const days: Array<{ date: string; hours: number[] }> = [];
+    if (this.daysStreamed.has(`${stream}/${yesterday}`)) days.push({ date: yesterday, hours: Array.from({ length: 24 }, (_, h) => h) });
+    days.push({ date: today, hours: Array.from({ length: hourNow }, (_, h) => h) });
+    for (const { date, hours } of days) {
+      const due = hours.filter((hour) => !this.sealedHours.has(`${stream}/${date}/${hour}`));
+      if (due.length === 0) continue;
+      const ref = { provider, symbol, date };
+      // One index of the day for all its due hours (M1-15b).
+      await this.sealer.seal(ref, due, await this.liveDay(ref));
+      for (const hour of due) this.sealedHours.add(`${stream}/${date}/${hour}`);
+    }
   }
 
   private liveDay(ref: RawDayRef): Promise<Bar[]> {
