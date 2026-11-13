@@ -36,7 +36,10 @@ export type Signal =
 
 export type Sizing =
   | { readonly kind: 'fixed'; readonly quantity: number }
-  /** A share of equity (initial capital plus closed profit), at the signal bar's close. */
+  /**
+   * A share of equity at the signal bar's close: initial capital plus closed
+   * profit plus the open position's profit (TradingView's strategy.equity).
+   */
   | { readonly kind: 'percentOfEquity'; readonly percent: number };
 
 export interface BacktestConfig {
@@ -163,6 +166,12 @@ function intrabarExit(position: Position, bar: Prices): { price: number; reason:
   return undefined;
 }
 
+/** An open position's profit at a price, net of its entry commission. */
+function openProfitAt(position: Readonly<Position>, price: number): number {
+  const gross = (position.side === 'long' ? price - position.entryPrice : position.entryPrice - price) * position.quantity;
+  return gross - position.entryCommission;
+}
+
 function round(value: number, decimals: number): number {
   const factor = 10 ** decimals;
   const rounded = Math.round(Number((value * factor).toPrecision(15))) / factor;
@@ -279,8 +288,10 @@ export function stepBacktest(
       }
       continue;
     }
-    if (signal.kind === 'exit' && position === undefined && pending?.signal.kind !== 'enter') continue;
-    const equity = config.initialCapital + realised;
+    // Like Pine's strategy.close, an exit does nothing while flat, so it never
+    // cancels an entry signalled at the same close.
+    if (signal.kind === 'exit' && position === undefined) continue;
+    const equity = config.initialCapital + realised + (position === undefined ? 0 : openProfitAt(position, prices.close));
     const quantity = config.sizing.kind === 'fixed' ? config.sizing.quantity : (equity * config.sizing.percent) / 100 / prices.close;
     pending = { signal, quantity };
   }
@@ -294,7 +305,6 @@ export function summarise(state: BacktestState, instrument: Instrument): Backtes
   let open: OpenPosition | undefined;
   if (position !== undefined && lastBar !== undefined) {
     const lastClose = Number(formatScaled(lastBar.close, instrument.priceScale));
-    const gross = (position.side === 'long' ? lastClose - position.entryPrice : position.entryPrice - lastClose) * position.quantity;
     open = {
       side: position.side,
       quantity: position.quantity,
@@ -302,7 +312,7 @@ export function summarise(state: BacktestState, instrument: Instrument): Backtes
       entryPrice: position.entryPrice,
       stop: position.stop,
       target: position.target,
-      openProfit: round(gross - position.entryCommission, MONEY_DECIMALS),
+      openProfit: round(openProfitAt(position, lastClose), MONEY_DECIMALS),
     };
   }
   return { trades: state.trades, open, pending: state.pending?.signal, totals: totalsOf(state.trades, state.config.initialCapital) };

@@ -80,6 +80,14 @@ describe('orders fill at the next open', () => {
     expect([trades.length, open, pending]).toEqual([0, undefined, undefined]);
   });
 
+  it('an exit while flat does not cancel an entry signalled at the same close', () => {
+    const { open } = backtest(btc, bars(flat(100), flat(101)), [
+      { time: t(0), kind: 'enter', side: 'long' },
+      { time: t(0), kind: 'exit' },
+    ]);
+    expect(open).toMatchObject({ side: 'long', entryPrice: 101 });
+  });
+
   it('reports an order signalled on the last bar as pending, not filled', () => {
     const signal: Signal = { time: t(1), kind: 'enter', side: 'long' };
     const { open, pending } = backtest(btc, bars(flat(100), flat(101)), [signal]);
@@ -179,6 +187,19 @@ describe('sizing and commission', () => {
       [50, 1_000],
       [27.5, 275],
     ]);
+  });
+});
+
+describe('sizing on a reversal', () => {
+  it('a share of equity counts the open position profit at the signal close', () => {
+    const config: BacktestConfig = { initialCapital: 10_000, sizing: { kind: 'percentOfEquity', percent: 50 } };
+    const b = bars(flat(100), flat(100), flat(125), flat(125));
+    const { trades, open } = backtest(btc, b, [
+      { time: t(0), kind: 'enter', side: 'long' }, // 5,000 / 100 = 50 units
+      { time: t(2), kind: 'enter', side: 'short' }, // equity 10,000 + 1,250 open = 11,250; 5,625 / 125 = 45 units
+    ], config);
+    expect(trades.map((x) => [x.quantity, x.profit, x.exitReason])).toEqual([[50, 1_250, 'reverse']]);
+    expect(open).toMatchObject({ side: 'short', quantity: 45, entryPrice: 125 });
   });
 });
 
