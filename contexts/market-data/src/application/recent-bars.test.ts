@@ -192,6 +192,20 @@ describe('RecentBars.page', () => {
     expect(page.next).toBeNull();
   });
 
+  it('never reads a range twice when the window reaches further back than the widening (found in the M1-15 smoke run)', async () => {
+    // The window was filled long ago, so it starts far back and holds fewer bars than the page asks for;
+    // the newer bars reached it through BarClosed. The widening must not re-read what the window gave.
+    const { cache, recent } = setup(early, 100);
+    await recent.read(BTC, '5m', { limit: 4, now: at(47) });
+    await recent.onBarClosed(late.map((b) => ({ symbol: 'BTCUSD', timeframe: '5m' as const, bar: b })));
+    expect((await cache.get('BTCUSD', '5m'))?.bars).toHaveLength(20);
+
+    const page = await recent.page(BTC, '5m', { limit: 25, now, earliest });
+    const times = page.bars.map((b) => b.time);
+    expect(times).toEqual(all.map((b) => b.time)); // each bar once, ascending
+    expect(page.next).toBeNull();
+  });
+
   it('keeps one request bounded over a very long hole, and says where to resume', async () => {
     const { store, recent } = setup([bar(0), ...late]);
     const page = await recent.page(BTC, '5m', { limit: 1, before: at(2_000), now, earliest: at(-1_000_000) });
