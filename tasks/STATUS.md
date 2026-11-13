@@ -30,7 +30,7 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M2-01 | CDK staging stack | todo | #18 |  |
 | M2-02 | Cache layer | done | #19 | #77 |
 | M2-03 | History API | done | #20 | #79 |
-| M2-04 | Live gateway | in review | #21 | #80 |
+| M2-04 | Live gateway | done | #21 | #80 |
 | M2-05 | Chart app | todo | #22 |  |
 | M2-06 | Scroll-back paging, smooth loading of older history | todo | #23 |  |
 | M2-07 | Freshness checker | todo | #24 |  |
@@ -40,8 +40,8 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M2-11 | Embed in the InvestAnswers site (iframe or web component), domain-locked | todo | #28 |  |
 | M2-12 | Themes (light and dark) and mobile layout | todo | #29 |  |
 | M2-13 | Saved chart preferences in DynamoDB (last symbol, timeframe, theme) | todo | #30 |  |
-| M3-01 | IndicatorDefinition interface | todo | #31 |  |
-| M3-02 | Settings schema → settings dialog (generated from the declared inputs, with range limits) | todo | #32 |  |
+| M3-01 | IndicatorDefinition interface | done | #31 | #85 |
+| M3-02 | Settings schema → settings dialog (generated from the declared inputs, with range limits); part 1 done, part 2 (the dialog) waits on M2-05 | blocked | #32 | #86 |
 | M3-03 | Indicator parity harness | todo | #33 |  |
 | M3-04 | Indicator engine | todo | #34 |  |
 | M3-05 | Demo indicator end to end (chart, dialog, output types) | todo | #35 |  |
