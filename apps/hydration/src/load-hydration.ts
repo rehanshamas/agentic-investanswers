@@ -179,6 +179,7 @@ async function main(): Promise<void> {
     liveProviderOf: () => 'loadsim',
     cooked,
     watermarks: cooked,
+    hours: raw,
     cache: countingCache(cache),
     bus: { publish: (batch) => (count('redis'), bus.publish(batch)) },
     publisher: `load-${run}`,
