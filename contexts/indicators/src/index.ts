@@ -34,3 +34,9 @@ export { IndicatorDefinitionError, assertValidDefinition } from './domain/indica
 
 export type { IndicatorRun } from './domain/stepping.js';
 export { SteppingError, commit, indicatorBar, preview, runAll, startRun } from './domain/stepping.js';
+
+export type { SettingError, SettingErrorCode, SettingsCheck } from './domain/settings.js';
+export { checkSettings, settingsKey } from './domain/settings.js';
+
+export type { DialogField, NumberField, SelectField, SettingsDialog, SwitchField } from './domain/settings-dialog.js';
+export { settingsDialog } from './domain/settings-dialog.js';
