@@ -18,3 +18,18 @@ describe('accessFromEnv', () => {
     expect(await access.policy.canReadBars(LOCAL_DEV_PRINCIPAL, 'BTCUSD', '1m')).toBe(true);
   });
 });
+
+describe('accessFromEnv with sign-in', () => {
+  it('checks plans from config/plans.json: a new account is on the default plan', async () => {
+    const access = accessFromEnv({});
+    const signedUp = await access.signIn!.signUp('new@example.com', 'a long enough password');
+    if (!signedUp.ok) throw new Error('sign-up failed');
+    const principal = { kind: 'human' as const, id: signedUp.account.id };
+    expect((await access.policy.entitlements(principal)).plan.id).toBe('free');
+  });
+
+  it('dev access is on no real plan and offers no upgrade', async () => {
+    const access = accessFromEnv({ AIA_DEV_AUTH: '1' });
+    expect(await access.policy.entitlements(LOCAL_DEV_PRINCIPAL)).toMatchObject({ plan: { id: 'dev' }, upgradeUrl: undefined });
+  });
+});

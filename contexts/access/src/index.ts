@@ -2,7 +2,11 @@
 
 export type { Principal, PrincipalKind } from './domain/principal.js';
 export type { PrincipalResolverPort, RequestCredentials } from './application/principal-resolver-port.js';
-export type { AccessPolicyPort } from './application/access-policy-port.js';
+export type { AccessPolicyPort, Entitlements } from './application/access-policy-port.js';
+export type { Includes, Plan, PlanBook } from './domain/plans.js';
+export { PlanConfigError, parsePlanBook, planFor, planIncludes } from './domain/plans.js';
+export { PlanPolicy } from './application/plan-policy.js';
+export { loadPlanBook } from './adapters/plan-file.js';
 export type { Access } from './adapters/local-dev-access.js';
 export {
   AllowEverythingPolicy,
