@@ -1,6 +1,14 @@
 // Public entry of the access context. Other packages import only from here.
 
 export type { Principal, PrincipalKind } from './domain/principal.js';
+export { mayWrite } from './domain/principal.js';
+export type { AgentKey, AgentKeyView, AgentScope } from './domain/agent-key.js';
+export { AGENT_KEY_PREFIX, MAX_AGENT_KEYS, isAgentKey } from './domain/agent-key.js';
+export type { AgentKeyStorePort } from './application/agent-key-store-port.js';
+export type { AgentKeysDeps, CreateAgentKeyResult } from './application/agent-keys.js';
+export { AgentKeys, AnyOfResolver } from './application/agent-keys.js';
+export { MemoryAgentKeyStore } from './adapters/memory-agent-key-store.js';
+export { DynamoAgentKeyStore } from './adapters/dynamodb-agent-key-store.js';
 export type { PrincipalResolverPort, RequestCredentials } from './application/principal-resolver-port.js';
 export type { AccessPolicyPort, Entitlements } from './application/access-policy-port.js';
 export type { Includes, Plan, PlanBook } from './domain/plans.js';

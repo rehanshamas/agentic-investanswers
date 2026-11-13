@@ -50,7 +50,7 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M3-07b | ATR port, slice 2: signals | todo | #38 |  |
 | M3-07c | ATR port, slice 3: backtest | todo | #39 |  |
 | M3-08 | Leak test: no internals in API, WebSocket or the browser bundle | todo | #40 |  |
-| M4-01 | Agent identity | todo | #41 |  |
+| M4-01 | Agent identity | in review | #41 |  |
 | M4-02 | Read-only MCP tools | todo | #42 |  |
 | M4-03 | Read-only agent API endpoints | todo | #43 |  |
 | M4-04 | Usage and audit records for every human and agent request | todo | #44 |  |

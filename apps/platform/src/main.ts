@@ -12,7 +12,7 @@
 //
 // Exits 2 on a setup error.
 
-import { DynamoAccountStore, DynamoSessionStore, accessFromEnv, dynamoClient, ensureUsersTable } from '@aia/access';
+import { DynamoAccountStore, DynamoAgentKeyStore, DynamoSessionStore, accessFromEnv, dynamoClient, ensureUsersTable } from '@aia/access';
 import { RawMinuteSource, S3RawBarStore, feedsFor, liveProviderOf, loadFeedPlan, rawProviderOf } from '@aia/hydration';
 import {
   CookedReader,
@@ -35,7 +35,11 @@ async function usersStores(env: NodeJS.ProcessEnv) {
   const local = endpoint !== 'aws';
   const client = dynamoClient(local ? { endpoint, table, credentials: { accessKeyId: 'local', secretAccessKey: 'local' } } : { endpoint, table });
   if (local) await ensureUsersTable(client, table);
-  return { accounts: new DynamoAccountStore(client, table), sessions: new DynamoSessionStore(client, table) };
+  return {
+    accounts: new DynamoAccountStore(client, table),
+    sessions: new DynamoSessionStore(client, table),
+    agentKeys: new DynamoAgentKeyStore(client, table),
+  };
 }
 
 async function main(): Promise<void> {
