@@ -7,6 +7,7 @@
 //   GET /bars?instrument=BTCUSD&tf=5m&limit=500&before=1762800000
 //   GET /live   upgraded to a WebSocket; the protocol is in @aia/market-data (live-protocol.ts)
 //   GET /plan   what the caller's plan includes, and where to upgrade (M2-09)
+//   POST /mcp   read-only MCP tools for agents (M4-02); see mcp-route.ts
 //   /auth/*     the app's own sign-in (M2-08) and agent keys (M4-01), when configured;
 //               see auth-routes.ts and agent-key-routes.ts
 //
@@ -17,16 +18,18 @@
 import compress from '@fastify/compress';
 import websocket from '@fastify/websocket';
 import type { Access, Principal } from '@aia/access';
-import type { HistoryErrorCode, HistoryQuery, LiveGateway } from '@aia/market-data';
+import type { HistoryQuery, LiveGateway } from '@aia/market-data';
 import { LIVE_MAX_CLIENT_MESSAGE } from '@aia/market-data';
-import type { BarTime } from '@aia/shared-kernel';
+import type { BarTime, Instrument } from '@aia/shared-kernel';
 import Fastify from 'fastify';
 import type { FastifyInstance, FastifyLoggerOptions, FastifyRequest } from 'fastify';
 
 import { mountAgentKeyRoutes } from './agent-key-routes.js';
 import { mountAuthRoutes } from './auth-routes.js';
+import { mountMcpRoute } from './mcp-route.js';
 import type { Limits } from './rate-limit.js';
 import { refusedForRate } from './rate-limit.js';
+import { ReadQueries } from './read-queries.js';
 
 export interface ServerDeps {
   readonly history: Pick<HistoryQuery, 'parse' | 'run'>;
@@ -37,18 +40,13 @@ export interface ServerDeps {
   readonly live?: Pick<LiveGateway, 'open'>;
   /** How often idle WebSockets are pinged; one that missed the last ping is closed. Default 30 s. */
   readonly pingMs?: number;
+  /** The instruments served, for the MCP instrument listing (M4-02). */
+  readonly instruments?: readonly Instrument[];
   /** Per-user rate limits (M2-10); none when left out. */
   readonly limits?: Limits;
   /** Request logging; `{ stream }` sends it to a stream (tests). Session tokens are masked either way. */
   readonly logger?: boolean | { readonly stream: NodeJS.WritableStream };
 }
-
-const STATUS: Readonly<Record<HistoryErrorCode, number>> = {
-  bad_parameter: 400,
-  limit_too_large: 400,
-  unknown_instrument: 404,
-  timeframe_not_served: 409,
-};
 
 const error = (code: string, message: string) => ({ error: { code, message } });
 
@@ -94,6 +92,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   app.get('/health', () => ({ ok: true }));
 
   const limits = deps.limits;
+  const reads = new ReadQueries({ history: deps.history, policy: deps.access.policy, now: deps.now, instruments: deps.instruments });
   if (deps.access.signIn !== undefined) mountAuthRoutes(app, deps.access.signIn, limits);
   if (deps.access.agentKeys !== undefined) mountAgentKeyRoutes(app, deps.access.agentKeys, deps.access.principals, limits);
 
@@ -103,24 +102,19 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     if (principal === undefined) return reply.code(401).send(error('unauthorized', 'sign in to read bars'));
     if (limits !== undefined && (await refusedForRate(reply, await limits.checkReads(principal)))) return reply;
 
-    const parsed = deps.history.parse(request.query as Record<string, unknown>);
-    if (!parsed.ok) return reply.code(STATUS[parsed.error.code]).send({ error: parsed.error });
-
-    const { instrument, timeframe } = parsed.request;
-    if (!(await deps.access.policy.canReadBars(principal, instrument.symbol, timeframe))) {
-      const { upgradeUrl } = await deps.access.policy.entitlements(principal);
-      const refusal = error('forbidden', `your plan does not include ${instrument.symbol} ${timeframe}`);
-      return reply.code(403).send({ error: { ...refusal.error, ...(upgradeUrl === undefined ? {} : { upgradeUrl }) } });
-    }
-    return deps.history.run(parsed.request, deps.now());
+    const outcome = await reads.bars(principal, request.query as Record<string, unknown>);
+    return outcome.ok ? outcome.value : reply.code(outcome.status).send({ error: outcome.error });
   });
 
   app.get('/plan', async (request, reply) => {
     const principal = await deps.access.principals.resolve({ authorization: request.headers.authorization });
     if (principal === undefined) return reply.code(401).send(error('unauthorized', 'sign in to see your plan'));
     if (limits !== undefined && (await refusedForRate(reply, await limits.checkReads(principal)))) return reply;
-    return deps.access.policy.entitlements(principal);
+    const outcome = await reads.plan(principal);
+    return outcome.ok ? outcome.value : reply.code(outcome.status).send({ error: outcome.error });
   });
+
+  mountMcpRoute(app, reads, deps.access.principals, limits);
 
   const live = deps.live;
   if (live !== undefined) {
