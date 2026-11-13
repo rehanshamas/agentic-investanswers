@@ -45,7 +45,7 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M3-03 | Indicator parity harness | todo | #33 |  |
 | M3-04 | Indicator engine | in review | #34 | #89 |
 | M3-05 | Demo indicator end to end (chart, dialog, output types) | todo | #35 |  |
-| M3-06 | Backtest engine (shared): trades, profit, ROI, win rate, totals | todo | #36 |  |
+| M3-06 | Backtest engine (shared): trades, profit, ROI, win rate, totals | in review | #36 | #91 |
 | M3-07a | ATR port, slice 1: plotted values (agentic-investanswers-indicators) | todo | #37 |  |
 | M3-07b | ATR port, slice 2: signals | todo | #38 |  |
 | M3-07c | ATR port, slice 3: backtest | todo | #39 |  |

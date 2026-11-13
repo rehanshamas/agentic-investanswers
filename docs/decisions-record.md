@@ -109,6 +109,11 @@ Settled choices the client may ask about.
 - **What:** the History API compresses large responses (gzip) for browsers and agents that accept it, using `@fastify/compress`, the compression plugin maintained by the Fastify team. Added with the History API (M2-03, #79); confirmed by Sham on 2026-11-13.
 - **Why:** a chart loads thousands of bars at once; compressed, the same response is several times smaller, so charts open faster, especially on mobile.
 
+**D-09 · Backtests follow TradingView's Strategy Tester rules** (2026-11-13, M3-06)
+- **What:** a signal at a bar's close fills at the next bar's open; one position at a time, and a signal for the other side reverses it; stops and targets fill inside the bar along TradingView's assumed price path, or at the open after a gap; commission is a percentage per fill. Defaults match TradingView's: 1,000,000 starting capital, 1 unit per trade, no commission.
+- **Why:** backtest totals are checked against TradingView's exports, so the rules must be the same.
+- **Both ways the client described:** the same engine runs a backtest over all stored history at once, or bar by bar as bars close on the chart (including live), and the two give identical results on every closed bar.
+
 ## Closed
 **P-01 · Data licence and daily bars** (OI-22, due 2026-11-13) · closed 2026-11-13
 - **Was:** open question; meanwhile we kept data permanently and used provider daily bars only if building them from 1-minute bars failed parity.
