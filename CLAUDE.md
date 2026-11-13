@@ -37,6 +37,7 @@ Say "bar", "timeframe", "instrument", "market session", "indicator". Never "cand
 `@aia/shared-kernel`, `@aia/<context>`, `@aia/app-<app>`. Boundaries are enforced by `eslint.config.mjs` (Nx tags plus import rules); never weaken that file to get green.
 
 ## Workflow
+- **Work happens in more than one session** (local Claude Code and Sham's cloud project threads). Before starting or resuming any task, fetch `origin/main` and check that nobody else has it: its row in `tasks/STATUS.md` on `origin/main`, open PRs (`gh pr list`), and remote branches named `<ID>-*` (`git branch -r`). If it is "in progress" or "in review" elsewhere, or already done, stop and tell Sham instead of redoing it. When you start a task, get its "in progress" row onto `main` early (push the branch and open a draft PR, or a one-line STATUS PR), so other sessions see it.
 - Tasks come from `docs/backlog.md`. Use `/start-task <ID>`, `/resume-task <ID>` and `/handoff`. "Start task <ID>" means: create `tasks/<ID>.md` from `tasks/_template.md`, fill it from the backlog row, set it to "in progress" in `tasks/STATUS.md`, then plan. "Resume task <ID>" means: read `tasks/<ID>.md`, including its Handoff, and continue.
 - Propose a plan first and wait for approval before editing.
 - One task per branch (`<task-id>-<slug>`), small commits, then open a PR describing what changed and how it was verified. Never push to `main`, never force-push, never commit `.env` or keys. Each PR body says `Closes #<issue>` for its task's GitHub issue.
