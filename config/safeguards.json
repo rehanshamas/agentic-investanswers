@@ -1,0 +1,10 @@
+{
+  "$comment": "Per-user rate limits (M2-10). Starter numbers, to be tuned with the client: a request over a limit gets 429 with Retry-After. humanReads and agentReads count /bars, /plan and /live connections per signed-in user or agent key (live updates on an open connection are not counted). signIn and signUp count attempts per client address; agentKeyChanges counts agent keys created or revoked per account. Windows are fixed, in seconds. The bars-per-request cap (1,000) is the History API's. Changing these needs no code change; the platform reads them at start-up.",
+  "rateLimits": {
+    "humanReads": { "limit": 300, "windowSeconds": 60 },
+    "agentReads": { "limit": 120, "windowSeconds": 60 },
+    "signIn": { "limit": 10, "windowSeconds": 900 },
+    "signUp": { "limit": 5, "windowSeconds": 3600 },
+    "agentKeyChanges": { "limit": 20, "windowSeconds": 3600 }
+  }
+}

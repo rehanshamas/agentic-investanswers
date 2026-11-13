@@ -83,6 +83,9 @@ importers:
       '@aws-sdk/client-dynamodb':
         specifier: ^3.1168.0
         version: 3.1168.0
+      redis:
+        specifier: ^5.12.1
+        version: 5.12.1
 
   contexts/agent:
     dependencies:

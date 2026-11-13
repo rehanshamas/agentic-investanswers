@@ -85,6 +85,7 @@ The client must be able to change the source of any feed at any time with no har
 ## Security
 - Indicator source lives only in `agentic-investanswers-indicators`. Only drawn outputs at display precision leave the engine.
 - Every request carries a principal (human or agent); plan checks run on every REST route and WebSocket subscription.
+- **Rate limits (M2-10; decision record T-06):** fixed windows counted in Redis (`rl|<bucket>|<subject>|<window>`, one script per hit), shared by every platform process. Reads (`/bars`, `/plan`, a `/live` connection) per user or per agent key; sign-in and sign-up per client address; agent key changes per account. Over a limit: `429 rate_limited` with `Retry-After`. Limits are `config/safeguards.json` (or `AIA_SAFEGUARDS`). If Redis fails, requests are let through and the failure is logged. Behind a load balancer the client address must come from it (Fastify `trustProxy`, set with the AWS stack). The bars-per-request cap is the History API's (1,000). WAF rules come with M2-01.
 
 ## Stack
 TypeScript on Node.js 22, pnpm + Nx, Vitest, Playwright, React + KLineChart (Apache 2.0; the client rules out TradingView libraries, including Lightweight Charts; its built-in indicators stay off, because indicators run server-side), AWS CDK (TypeScript).

@@ -14,11 +14,18 @@ import { mayWrite } from '@aia/access';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { FastifyInstance } from 'fastify';
 
+import type { Limits } from './rate-limit.js';
+import { refusedForRate } from './rate-limit.js';
+
 const error = (code: string, message: string) => ({ error: { code, message } });
 
 const bodyLimit = 4_096;
 
-export function mountAgentKeyRoutes(app: FastifyInstance, agentKeys: AgentKeys, principals: PrincipalResolverPort): void {
+/** Creating and revoking keys is limited per account (M2-10), when limits are given. */
+export function mountAgentKeyRoutes(app: FastifyInstance, agentKeys: AgentKeys, principals: PrincipalResolverPort, limits?: Limits): void {
+  const changeAllowed = async (reply: FastifyReply, principal: Principal): Promise<boolean> =>
+    limits === undefined || !(await refusedForRate(reply, await limits.check('agentKeyChanges', principal.id)));
+
   /** The signed-in human, or a reply already sent. */
   const human = async (request: FastifyRequest, reply: FastifyReply): Promise<Principal | undefined> => {
     const principal = await principals.resolve({ authorization: request.headers.authorization });
@@ -35,7 +42,7 @@ export function mountAgentKeyRoutes(app: FastifyInstance, agentKeys: AgentKeys, 
 
   app.post('/auth/agent-keys', { bodyLimit }, async (request, reply) => {
     const principal = await human(request, reply);
-    if (principal === undefined) return reply;
+    if (principal === undefined || !(await changeAllowed(reply, principal))) return reply;
     const name = (request.body as Record<string, unknown> | null | undefined)?.['name'];
     if (typeof name !== 'string') return reply.code(400).send(error('bad_request', 'send JSON with a "name" for the key'));
     const result = await agentKeys.create(principal.id, name);
@@ -51,7 +58,7 @@ export function mountAgentKeyRoutes(app: FastifyInstance, agentKeys: AgentKeys, 
 
   app.delete<{ Params: { id: string } }>('/auth/agent-keys/:id', async (request, reply) => {
     const principal = await human(request, reply);
-    if (principal === undefined) return reply;
+    if (principal === undefined || !(await changeAllowed(reply, principal))) return reply;
     if ((await agentKeys.revoke(principal.id, request.params.id)) === 'not_found') {
       return reply.code(404).send(error('not_found', 'no agent key with that id on your account'));
     }

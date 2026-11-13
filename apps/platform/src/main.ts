@@ -12,7 +12,17 @@
 //
 // Exits 2 on a setup error.
 
-import { DynamoAccountStore, DynamoAgentKeyStore, DynamoSessionStore, accessFromEnv, dynamoClient, ensureUsersTable } from '@aia/access';
+import {
+  DynamoAccountStore,
+  DynamoAgentKeyStore,
+  DynamoSessionStore,
+  RateLimiter,
+  RedisRateCounter,
+  accessFromEnv,
+  dynamoClient,
+  ensureUsersTable,
+  loadRateLimits,
+} from '@aia/access';
 import { RawMinuteSource, S3RawBarStore, feedsFor, liveProviderOf, loadFeedPlan, rawProviderOf } from '@aia/hydration';
 import {
   CookedReader,
@@ -95,7 +105,19 @@ async function main(): Promise<void> {
 
   const access = env['AIA_DEV_AUTH'] === '1' ? accessFromEnv(env) : accessFromEnv(env, await usersStores(env));
   console.log(access.description);
-  const app = await buildServer({ history, access, live, now: () => barTime(Math.floor(Date.now() / 1000)), logger: true });
+  // Per-user rate limits (M2-10), counted in the same Redis, so every platform process shares them.
+  const counter = await RedisRateCounter.connect({
+    url: env['AIA_REDIS_URL'],
+    reconnect: 'forever',
+    onError: (failure) => console.error(`redis (rate limits): ${failure.message} (requests are let through meanwhile)`),
+  });
+  const limits = new RateLimiter({
+    limits: loadRateLimits(env),
+    counter,
+    now: () => Date.now(),
+    onError: (failure) => console.error(`rate limits: ${failure.message} (request let through)`),
+  });
+  const app = await buildServer({ history, access, live, limits, now: () => barTime(Math.floor(Date.now() / 1000)), logger: true });
 
   const port = Number(env['AIA_PORT'] ?? 8080);
   const host = env['AIA_HOST'] ?? '127.0.0.1';
@@ -107,6 +129,7 @@ async function main(): Promise<void> {
       .close()
       .then(() => bus.close())
       .then(() => cache.close())
+      .then(() => counter.close())
       .then(() => process.exit(0));
   };
   process.on('SIGINT', shutdown);

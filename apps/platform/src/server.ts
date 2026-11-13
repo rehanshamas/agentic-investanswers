@@ -25,6 +25,8 @@ import type { FastifyInstance, FastifyLoggerOptions, FastifyRequest } from 'fast
 
 import { mountAgentKeyRoutes } from './agent-key-routes.js';
 import { mountAuthRoutes } from './auth-routes.js';
+import type { Limits } from './rate-limit.js';
+import { refusedForRate } from './rate-limit.js';
 
 export interface ServerDeps {
   readonly history: Pick<HistoryQuery, 'parse' | 'run'>;
@@ -35,6 +37,8 @@ export interface ServerDeps {
   readonly live?: Pick<LiveGateway, 'open'>;
   /** How often idle WebSockets are pinged; one that missed the last ping is closed. Default 30 s. */
   readonly pingMs?: number;
+  /** Per-user rate limits (M2-10); none when left out. */
+  readonly limits?: Limits;
   /** Request logging; `{ stream }` sends it to a stream (tests). Session tokens are masked either way. */
   readonly logger?: boolean | { readonly stream: NodeJS.WritableStream };
 }
@@ -89,13 +93,15 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
 
   app.get('/health', () => ({ ok: true }));
 
-  if (deps.access.signIn !== undefined) mountAuthRoutes(app, deps.access.signIn);
-  if (deps.access.agentKeys !== undefined) mountAgentKeyRoutes(app, deps.access.agentKeys, deps.access.principals);
+  const limits = deps.limits;
+  if (deps.access.signIn !== undefined) mountAuthRoutes(app, deps.access.signIn, limits);
+  if (deps.access.agentKeys !== undefined) mountAgentKeyRoutes(app, deps.access.agentKeys, deps.access.principals, limits);
 
   app.get('/bars', async (request, reply) => {
     // Every request carries a principal (CLAUDE.md rule 4), checked first.
     const principal = await deps.access.principals.resolve({ authorization: request.headers.authorization });
     if (principal === undefined) return reply.code(401).send(error('unauthorized', 'sign in to read bars'));
+    if (limits !== undefined && (await refusedForRate(reply, await limits.checkReads(principal)))) return reply;
 
     const parsed = deps.history.parse(request.query as Record<string, unknown>);
     if (!parsed.ok) return reply.code(STATUS[parsed.error.code]).send({ error: parsed.error });
@@ -112,6 +118,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   app.get('/plan', async (request, reply) => {
     const principal = await deps.access.principals.resolve({ authorization: request.headers.authorization });
     if (principal === undefined) return reply.code(401).send(error('unauthorized', 'sign in to see your plan'));
+    if (limits !== undefined && (await refusedForRate(reply, await limits.checkReads(principal)))) return reply;
     return deps.access.policy.entitlements(principal);
   });
 
@@ -127,6 +134,8 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
         preValidation: async (request, reply) => {
           const principal = await deps.access.principals.resolve(credentials(request));
           if (principal === undefined) return reply.code(401).send(error('unauthorized', 'sign in to follow live bars'));
+          // A connection counts as one read; updates on it do not.
+          if (limits !== undefined && (await refusedForRate(reply, await limits.checkReads(principal)))) return reply;
           principals.set(request, principal);
           return undefined;
         },

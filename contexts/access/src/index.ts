@@ -37,3 +37,12 @@ export { MemoryAccountStore, MemorySessionStore } from './adapters/memory-sign-i
 export { NodeCryptoTokens, ScryptPasswordHasher } from './adapters/node-crypto-sign-in.js';
 export type { DynamoConfig } from './adapters/dynamodb-sign-in-stores.js';
 export { DynamoAccountStore, DynamoSessionStore, dynamoClient, ensureUsersTable } from './adapters/dynamodb-sign-in-stores.js';
+
+export type { RateBucket, RateLimits, RateRule } from './domain/safeguards.js';
+export { RATE_BUCKETS, SafeguardsConfigError, parseRateLimits, windowOf } from './domain/safeguards.js';
+export type { RateCounterPort, RateDecision, RateLimiterDeps } from './application/rate-limiter.js';
+export { RateLimiter } from './application/rate-limiter.js';
+export { MemoryRateCounter } from './adapters/memory-rate-counter.js';
+export type { RedisRateCounterOptions } from './adapters/redis-rate-counter.js';
+export { RedisRateCounter } from './adapters/redis-rate-counter.js';
+export { loadRateLimits } from './adapters/safeguards-file.js';
