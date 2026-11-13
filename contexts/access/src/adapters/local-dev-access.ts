@@ -3,15 +3,19 @@
 // - AIA_DEV_AUTH=1: every request is a local human principal that may see
 //   everything. Never outside a developer's machine.
 // - Otherwise: the app's own sign-in (M2-08). A request is recognised only
-//   with a live session token from sign-up or sign-in.
+//   with a live session token from sign-up or sign-in, and sees what its
+//   placeholder plan includes (M2-09, T-02; config/plans.json).
 
-import type { AccessPolicyPort } from '../application/access-policy-port.js';
+import type { AccessPolicyPort, Entitlements } from '../application/access-policy-port.js';
+import { PlanPolicy } from '../application/plan-policy.js';
 import type { PrincipalResolverPort } from '../application/principal-resolver-port.js';
 import type { AccountStorePort, SessionStorePort } from '../application/sign-in-ports.js';
 import { SignIn } from '../application/sign-in.js';
+import type { PlanBook } from '../domain/plans.js';
 import type { Principal } from '../domain/principal.js';
 import { MemoryAccountStore, MemorySessionStore } from './memory-sign-in-stores.js';
 import { NodeCryptoTokens, ScryptPasswordHasher } from './node-crypto-sign-in.js';
+import { loadPlanBook } from './plan-file.js';
 
 export const LOCAL_DEV_PRINCIPAL: Principal = { kind: 'human', id: 'local-dev' };
 
@@ -28,9 +32,14 @@ export class NoSignInResolver implements PrincipalResolverPort {
   }
 }
 
+/** Dev access only: everything, on a plan that is not one of the real ones. */
 export class AllowEverythingPolicy implements AccessPolicyPort {
   canReadBars(): Promise<boolean> {
     return Promise.resolve(true);
+  }
+
+  entitlements(): Promise<Entitlements> {
+    return Promise.resolve({ plan: { id: 'dev', name: 'Local developer' }, instruments: 'all', timeframes: 'all', upgradeUrl: undefined });
   }
 }
 
@@ -57,9 +66,10 @@ export function ownSignIn(stores: SignInStores, now: () => number = () => Date.n
 
 /**
  * The access the platform runs with, from the environment. Without stores,
- * sign-in keeps accounts in memory (lost on restart).
+ * sign-in keeps accounts in memory (lost on restart). Plans come from
+ * config/plans.json (or AIA_PLANS) unless given.
  */
-export function accessFromEnv(env: Env, stores?: SignInStores): Access {
+export function accessFromEnv(env: Env, stores?: SignInStores, plans?: PlanBook): Access {
   if (env['AIA_DEV_AUTH'] === '1') {
     return {
       principals: new LocalDevPrincipalResolver(),
@@ -67,10 +77,11 @@ export function accessFromEnv(env: Env, stores?: SignInStores): Access {
       description: 'AIA_DEV_AUTH=1: every request is the local developer, with access to everything. Local use only.',
     };
   }
-  const signIn = ownSignIn(stores ?? { accounts: new MemoryAccountStore(), sessions: new MemorySessionStore() });
+  const chosen = stores ?? { accounts: new MemoryAccountStore(), sessions: new MemorySessionStore() };
+  const signIn = ownSignIn(chosen);
   return {
     principals: signIn,
-    policy: new AllowEverythingPolicy(),
+    policy: new PlanPolicy(plans ?? loadPlanBook(env), chosen.accounts),
     signIn,
     description:
       stores === undefined

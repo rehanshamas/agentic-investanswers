@@ -3,6 +3,7 @@
 // on in-memory stores and cache. They pin the request parameters, the
 // response shape and units, every error, paging and the cap.
 
+import type { AccessPolicyPort } from '@aia/access';
 import { accessFromEnv } from '@aia/access';
 import type { CookedBarStorePort, OneMinuteBarSourcePort } from '@aia/market-data';
 import { BTCUSD, ETHUSD, HistoryQuery, MemoryRecentBarsCache, NVDA, RecentBars } from '@aia/market-data';
@@ -12,6 +13,13 @@ import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { buildServer } from './server.js';
+
+/** A policy that refuses everything, as a plan that includes nothing would. */
+const REFUSE_ALL: AccessPolicyPort = {
+  canReadBars: () => Promise.resolve(false),
+  entitlements: () =>
+    Promise.resolve({ plan: { id: 'none', name: 'None' }, instruments: [], timeframes: [], upgradeUrl: 'https://example.com/upgrade' }),
+};
 
 const EARLIEST = barTime(1_730_419_200); // 2024-11-01
 const T0 = 1_762_800_000; // a whole 4h boundary
@@ -59,7 +67,7 @@ async function server(options: { bars?: Bar[]; devAuth?: boolean; allow?: boolea
     earliest: () => EARLIEST,
   });
   const access = accessFromEnv(options.devAuth === false ? {} : { AIA_DEV_AUTH: '1' });
-  const policy = options.allow === false ? { canReadBars: () => Promise.resolve(false) } : access.policy;
+  const policy = options.allow === false ? REFUSE_ALL : access.policy;
   app = await buildServer({ history, access: { principals: access.principals, policy }, now: () => NOW });
   return { app, store };
 }

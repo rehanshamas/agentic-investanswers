@@ -6,9 +6,12 @@
 //   GET /health
 //   GET /bars?instrument=BTCUSD&tf=5m&limit=500&before=1762800000
 //   GET /live   upgraded to a WebSocket; the protocol is in @aia/market-data (live-protocol.ts)
+//   GET /plan   what the caller's plan includes, and where to upgrade (M2-09)
 //   /auth/*     the app's own sign-in (M2-08), when configured; see auth-routes.ts
 //
-// Errors are `{ error: { code, message } }`.
+// Errors are `{ error: { code, message } }`. A plan refusal (403 forbidden)
+// adds `upgradeUrl`. A refused live subscription is a `forbidden` message on
+// the socket; the chart takes the upgrade link from GET /plan.
 
 import compress from '@fastify/compress';
 import websocket from '@fastify/websocket';
@@ -96,9 +99,17 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
 
     const { instrument, timeframe } = parsed.request;
     if (!(await deps.access.policy.canReadBars(principal, instrument.symbol, timeframe))) {
-      return reply.code(403).send(error('forbidden', `your plan does not include ${instrument.symbol} ${timeframe}`));
+      const { upgradeUrl } = await deps.access.policy.entitlements(principal);
+      const refusal = error('forbidden', `your plan does not include ${instrument.symbol} ${timeframe}`);
+      return reply.code(403).send({ error: { ...refusal.error, ...(upgradeUrl === undefined ? {} : { upgradeUrl }) } });
     }
     return deps.history.run(parsed.request, deps.now());
+  });
+
+  app.get('/plan', async (request, reply) => {
+    const principal = await deps.access.principals.resolve({ authorization: request.headers.authorization });
+    if (principal === undefined) return reply.code(401).send(error('unauthorized', 'sign in to see your plan'));
+    return deps.access.policy.entitlements(principal);
   });
 
   const live = deps.live;

@@ -65,6 +65,11 @@ The client must be able to change the source of any feed at any time with no har
 - **Stored in DynamoDB** (DynamoDB Local until staging): one table, `pk`/`sk`; an account and its email are written in one conditional transaction, so emails stay unique; sessions are stored as a SHA-256 of the token, with a TTL. Passwords are salted scrypt hashes (node:crypto, no extra dependency).
 - `AIA_DEV_AUTH=1` skips sign-in on a developer's machine only.
 
+## Plans (M2-09; decision record T-02)
+- **Placeholder plans as configuration** (`config/plans.json`, or `AIA_PLANS`): each plan lists the instruments and timeframes it includes (`"all"` for everything); every new account starts on the default plan; `assignments` moves an account, by email, to another plan; `upgradeUrl` is where locked content points. Checked at start-up, so a bad edit stops the platform with a clear message. Changing plans is an edit to that file and a restart.
+- **Checked behind `AccessPolicyPort`** (`PlanPolicy`), on every `/bars` request and every `/live` subscription. A refused `/bars` is `403 forbidden` with `upgradeUrl`; a refused subscription is a `forbidden` message on the socket. `GET /plan` tells the chart what the caller's plan includes and where to upgrade, so it can show locked instruments and timeframes before anyone asks.
+- Agents get the default plan until M4-01 links an agent to its user. InvestAnswers billing later is a new adapter behind the same port.
+
 ## Indicator engine (M3-01, M3-04)
 - **One shape for every indicator** (`contexts/indicators`): declared inputs with limits, declared outputs (lines, bands, markers, levels), and `step(state, bar)` that returns a new state and leaves the old one unchanged. ATR later is one new definition (decision record F-02).
 - **Runs on the server, cached in Redis** by indicator + version + instrument + timeframe + run start + settings. An entry holds the state after the last closed bar, that bar, and the newest 2,000 drawn points. A new closed bar is one step; the forming bar is previewed from the closed state and never cached; a changed last bar (a re-cook) means recompute.

@@ -41,7 +41,7 @@ Choices made to keep progress going, each built so it can be swapped later witho
 
 **T-02 · Placeholder subscription plans** (2026-11-13)
 - **Why:** the real plans and what each includes are not decided (OI-21).
-- **Affects:** a configurable set of plans (for example Free and Pro), each listing the instruments and timeframes it includes. Every REST route and WebSocket subscription checks it (M2-09).
+- **Affects:** a configurable set of plans, each listing the instruments and timeframes it includes. Every REST route and WebSocket subscription checks it (M2-09). For now: **Free** (Bitcoin and Ether, 1-hour bars and longer), which every new account starts on, and **Pro** (everything). An account is moved to Pro by adding its email to the plans file. Locked content points to an upgrade link, which is a placeholder (`investanswers.example`) until the client gives the real page.
 - **Swap later:** plans are data in one place, behind one access-policy interface. Changing them is a configuration change; linking to InvestAnswers billing later is a new adapter.
 
 **T-04 · Only crypto at 1m to 4h is served** (2026-11-11)
