@@ -6,6 +6,7 @@
 //   GET /health
 //   GET /bars?instrument=BTCUSD&tf=5m&limit=500&before=1762800000
 //   GET /live   upgraded to a WebSocket; the protocol is in @aia/market-data (live-protocol.ts)
+//   /auth/*     the app's own sign-in (M2-08), when configured; see auth-routes.ts
 //
 // Errors are `{ error: { code, message } }`.
 
@@ -16,18 +17,21 @@ import type { HistoryErrorCode, HistoryQuery, LiveGateway } from '@aia/market-da
 import { LIVE_MAX_CLIENT_MESSAGE } from '@aia/market-data';
 import type { BarTime } from '@aia/shared-kernel';
 import Fastify from 'fastify';
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyLoggerOptions, FastifyRequest } from 'fastify';
+
+import { mountAuthRoutes } from './auth-routes.js';
 
 export interface ServerDeps {
   readonly history: Pick<HistoryQuery, 'parse' | 'run'>;
-  readonly access: Pick<Access, 'principals' | 'policy'>;
+  readonly access: Pick<Access, 'principals' | 'policy' | 'signIn'>;
   /** The current time, as a bar time. */
   readonly now: () => BarTime;
   /** Mounts GET /live when given (M2-04). */
   readonly live?: Pick<LiveGateway, 'open'>;
   /** How often idle WebSockets are pinged; one that missed the last ping is closed. Default 30 s. */
   readonly pingMs?: number;
-  readonly logger?: boolean;
+  /** Request logging; `{ stream }` sends it to a stream (tests). Session tokens are masked either way. */
+  readonly logger?: boolean | { readonly stream: NodeJS.WritableStream };
 }
 
 const STATUS: Readonly<Record<HistoryErrorCode, number>> = {
@@ -41,8 +45,8 @@ const error = (code: string, message: string) => ({ error: { code, message } });
 
 /**
  * What a request presents. Browsers cannot set headers on a WebSocket, so
- * /live also takes `?token=`, passed on as a bearer token; M2-08 decides
- * which form real sign-in uses.
+ * /live also takes `?token=`, passed on as a bearer token. The app's own
+ * sign-in (M2-08) uses both: the header on REST, the query on /live.
  */
 function credentials(request: FastifyRequest) {
   const token = (request.query as Record<string, unknown> | undefined)?.['token'];
@@ -50,13 +54,37 @@ function credentials(request: FastifyRequest) {
   return { authorization };
 }
 
+/** A URL with any `token=` value masked, so session tokens never reach the logs. */
+export function redactUrl(url: string): string {
+  return url.replace(/([?&]token=)[^&#]*/gi, '$1[redacted]');
+}
+
+function loggerOptions(logger: ServerDeps['logger']): FastifyLoggerOptions | false {
+  if (logger === undefined || logger === false) return false;
+  return {
+    ...(logger === true ? {} : { stream: logger.stream }),
+    // /live carries the session token in its query (browsers cannot set
+    // WebSocket headers); the Authorization header is never logged by default.
+    serializers: {
+      req: (request: FastifyRequest) => ({
+        method: request.method,
+        url: redactUrl(request.url),
+        hostname: request.hostname,
+        remoteAddress: request.ip,
+      }),
+    },
+  };
+}
+
 export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
-  const app = Fastify({ logger: deps.logger ?? false });
+  const app = Fastify({ logger: loggerOptions(deps.logger) });
   await app.register(compress, { global: true });
   // Client messages are tiny (live-protocol.ts); anything larger is refused by ws itself.
   await app.register(websocket, { options: { maxPayload: LIVE_MAX_CLIENT_MESSAGE * 4 } });
 
   app.get('/health', () => ({ ok: true }));
+
+  if (deps.access.signIn !== undefined) mountAuthRoutes(app, deps.access.signIn);
 
   app.get('/bars', async (request, reply) => {
     // Every request carries a principal (CLAUDE.md rule 4), checked first.
@@ -133,6 +161,12 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     reply.code(404).send(error('not_found', `no route ${request.method} ${request.url.split('?')[0] ?? ''}`)),
   );
   app.setErrorHandler((failure, request, reply) => {
+    // Fastify's own refusals of a bad request (unreadable JSON, an oversized
+    // or unsupported body) keep their 4xx status rather than becoming a 500.
+    const status = (failure as { statusCode?: unknown }).statusCode;
+    if (typeof status === 'number' && status >= 400 && status < 500) {
+      return reply.code(status).send(error('bad_request', 'the request body could not be read'));
+    }
     request.log.error(failure);
     return reply.code(500).send(error('internal', 'something went wrong; try again'));
   });

@@ -34,7 +34,7 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M2-05 | Chart app | todo | #22 |  |
 | M2-06 | Scroll-back paging, smooth loading of older history | todo | #23 |  |
 | M2-07 | Freshness checker | todo | #24 |  |
-| M2-08 | The app's own sign-up and sign-in (InvestAnswers sign-in later) | todo | #25 |  |
+| M2-08 | The app's own sign-up and sign-in (InvestAnswers sign-in later) | in review | #25 | #92 |
 | M2-09 | Plan-based access on placeholder plans | todo | #26 |  |
 | M2-10 | Safeguards | todo | #27 |  |
 | M2-11 | Embed in the InvestAnswers site (iframe or web component), domain-locked | todo | #28 |  |

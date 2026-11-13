@@ -36,18 +36,13 @@ Choices made to keep progress going, each built so it can be swapped later witho
 
 **T-01 · The app's own sign-up and sign-in** (2026-11-13)
 - **Why:** the InvestAnswers sign-in and subscription details (OI-21, due 2026-11-10) have not arrived, and the client is not focused on this yet.
-- **Affects:** the platform gets its own accounts: sign-up, sign-in and session tokens (M2-08).
+- **Affects:** the platform gets its own accounts: sign-up, sign-in and session tokens (M2-08). Accounts and sessions are stored permanently in DynamoDB, as the architecture plans (Sham, 2026-11-13), not in a temporary store; passwords are stored only as salted scrypt hashes; a session lasts 30 days or until sign-out.
 - **Swap later:** every request already carries a "principal" (who is asking, human or agent), resolved through one interface. Moving to InvestAnswers sign-in later means replacing that resolver; routes, checks and the rest of the app do not change.
 
 **T-02 · Placeholder subscription plans** (2026-11-13)
 - **Why:** the real plans and what each includes are not decided (OI-21).
 - **Affects:** a configurable set of plans (for example Free and Pro), each listing the instruments and timeframes it includes. Every REST route and WebSocket subscription checks it (M2-09).
 - **Swap later:** plans are data in one place, behind one access-policy interface. Changing them is a configuration change; linking to InvestAnswers billing later is a new adapter.
-
-**T-03 · Local developer access mode** (2026-11-11)
-- **Why:** sign-in did not exist yet when the History API was built.
-- **Affects:** with `AIA_DEV_AUTH=1` on a developer's machine, every request counts as a local user with full access. Without it, every request is refused.
-- **Closes when:** the app's own sign-in (T-01) lands; the mode then stays for local development only, never in staging.
 
 **T-04 · Only crypto at 1m to 4h is served** (2026-11-11)
 - **Why:** daily, weekly and monthly bars, and stock bars, are cooked in M1-08, which waits on the stock export with consolidated volume (OI-27).
@@ -115,6 +110,10 @@ Settled choices the client may ask about.
 - **Both ways the client described:** the same engine runs a backtest over all stored history at once, or bar by bar as bars close on the chart (including live), and the two give identical results on every closed bar.
 
 ## Closed
+**T-03 · Local developer access mode** (2026-11-11) · closed 2026-11-13 (M2-08)
+- **Was:** with `AIA_DEV_AUTH=1` every request counted as a local user with full access; without it, every request was refused.
+- **Outcome:** the app's own sign-in (T-01) is in place, so without `AIA_DEV_AUTH=1` the platform now requires a signed-in user. The mode stays for local development only, never in staging.
+
 **P-01 · Data licence and daily bars** (OI-22, due 2026-11-13) · closed 2026-11-13
 - **Was:** open question; meanwhile we kept data permanently and used provider daily bars only if building them from 1-minute bars failed parity.
 - **Outcome:** Sham chose the default on 2026-11-13: data is kept permanently, and daily, weekly and monthly bars are built from 1-minute bars, with provider daily bars only if that fails parity. If InvestAnswers' data licence requires otherwise, tell us and it reopens.
