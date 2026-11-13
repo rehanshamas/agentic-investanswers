@@ -241,7 +241,8 @@ describe('LiveGateway: gaps and slow clients', () => {
     record();
     gateway.batch({ publisher: 'p', seq: 4, updates: [update('BTCUSD', '1m', bar(0))] }); // 3 went missing
     record();
-    gateway.batch({ publisher: 'q', seq: 1, updates: [] }); // hydration restarted
+    // Hydration restarted (M1-15c: a new process taking over BTCUSD, which p announced, is what resyncs).
+    gateway.batch({ publisher: 'q', seq: 1, updates: [update('BTCUSD', '1m', bar(1))] });
     record();
     gateway.lost();
     record();
@@ -258,6 +259,46 @@ describe('LiveGateway: gaps and slow clients', () => {
     gateway.batch({ publisher: 'q', seq: 10, updates: [update('BTCUSD', '1m', bar(1))] });
     flush();
     expect(socket.take().map((m) => m.type)).toEqual(['bars']);
+  });
+
+  it('follows several publishers at once (hydration shards): interleaved announcements are not gaps (M1-15c)', async () => {
+    const { socket, say } = await connect();
+    await say('subscribe', 'BTCUSD', '1m');
+    await say('subscribe', 'ETHUSD', '1m');
+    socket.take();
+    // Shard 1 streams BTC, shard 2 ETH; their announcements interleave on the bus.
+    for (let i = 1; i <= 50; i++) {
+      gateway.batch({ publisher: 'shard-1', seq: i, updates: [update('BTCUSD', '1m', bar(i))] });
+      gateway.batch({ publisher: 'shard-2', seq: 100 + i, updates: [update('ETHUSD', '1m', bar(i, 300_000))] });
+      if (i % 7 === 0) flush();
+    }
+    flush();
+    const messages = socket.take();
+    expect(messages.some((m) => m.type === 'resync')).toBe(false);
+    const updates = messages.flatMap((m) => (m.type === 'bars' ? m.updates : []));
+    expect(updates.filter((u) => u.instrument === 'BTCUSD')).toHaveLength(50);
+    expect(updates.filter((u) => u.instrument === 'ETHUSD')).toHaveLength(50);
+  });
+
+  it('resyncs when one shard misses an announcement or another process takes over its instruments, not for new shards with their own', async () => {
+    const { socket, say } = await connect();
+    await say('subscribe', 'BTCUSD', '1m');
+    socket.take();
+    const types = () => socket.take().map((m) => m.type).join(',') || '-';
+    gateway.batch({ publisher: 'shard-1', seq: 40, updates: [] }); // this gateway joins mid-stream
+    expect(types()).toBe('-');
+    gateway.batch({ publisher: 'shard-2', seq: 7, updates: [update('ETHUSD', '1m', bar(1, 300_000))] }); // another shard, also mid-stream
+    expect(types()).toBe('-');
+    gateway.batch({ publisher: 'shard-2', seq: 9, updates: [] }); // shard 2 missed 8
+    expect(types()).toBe('resync');
+    gateway.batch({ publisher: 'shard-1', seq: 41, updates: [] }); // shard 1 unaffected
+    expect(types()).toBe('-');
+    gateway.batch({ publisher: 'shard-3', seq: 1, updates: [update('NVDA', '1m', bar(1))] }); // a new shard with its own instrument
+    expect(types()).toBe('-');
+    gateway.batch({ publisher: 'shard-2-restarted', seq: 1, updates: [update('ETHUSD', '1m', bar(2, 300_000))] }); // shard 2 restarted: takes ETH back
+    expect(types()).toBe('resync');
+    gateway.batch({ publisher: 'shard-2-restarted', seq: 2, updates: [] });
+    expect(types()).toBe('-');
   });
 
   it('closes a connection that cannot keep up, without affecting others', async () => {

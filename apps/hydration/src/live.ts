@@ -16,6 +16,12 @@
 //   pnpm live                                   every instrument with a live feed today
 //   pnpm live --symbol BTCUSD
 //   pnpm live --record rec.jsonl                also save every raw message, for replay
+//   pnpm live --shard 2/8                       only the instruments of shard 2 of 8 (M1-15c)
+//
+// Shards split instruments across processes, each instrument in exactly one
+// (a feed plan pin, `"shard": n`, or a stable hash of its symbol), so each has
+// one writer. Run every shard i/n with the same n, and restart them together
+// when n changes.
 //
 // Runs until stopped (Ctrl-C); minutes not yet closed are not written. Exits 2
 // on a setup error, including Redis being unreachable at start.
@@ -26,13 +32,16 @@ import { parseArgs } from 'node:util';
 
 import type { LiveEvent, Scheduler } from '@aia/hydration';
 import {
+  ALL_IN_ONE,
   FeedPlanError,
   FeedSetupError,
   LiveStream,
   feedsFor,
+  inShard,
   liveProviderOf,
   liveSourceOn,
   loadFeedPlan,
+  parseShard,
   rawProviderOf,
 } from '@aia/hydration';
 import { PARITY_INSTRUMENTS, parityInstrument } from '@aia/market-data';
@@ -44,7 +53,7 @@ import { feedAdapters } from './feeds.js';
 import { LivePipeline } from './live-pipeline.js';
 import { localStores } from './stores.js';
 
-const USAGE = 'Usage: pnpm live [--symbol S]... [--record FILE]';
+const USAGE = 'Usage: pnpm live [--symbol S]... [--record FILE] [--shard I/N]';
 
 function usage(message: string): never {
   console.error(`${message}\n${USAGE}`);
@@ -75,7 +84,9 @@ function describe(instrument: Instrument, bar: Bar): string {
 }
 
 async function main(): Promise<void> {
-  const { values } = parseArgs({ options: { symbol: { type: 'string', multiple: true }, record: { type: 'string' } } });
+  const { values } = parseArgs({
+    options: { symbol: { type: 'string', multiple: true }, record: { type: 'string' }, shard: { type: 'string' } },
+  });
   let plan;
   try {
     plan = loadFeedPlan();
@@ -87,7 +98,23 @@ async function main(): Promise<void> {
   const asked = (values.symbol ?? []).map((symbol) => parityInstrument(symbol) ?? usage(`Unknown symbol: ${symbol}`));
   const candidates = asked.length > 0 ? asked : PARITY_INSTRUMENTS.filter((i) => feedPlan.instruments.some((f) => f.symbol === i.symbol));
   const liveToday = (instrument: Instrument) => liveSourceOn(feedsFor(feedPlan, instrument.symbol), today())?.provider;
-  const instruments = candidates.filter((i) => liveToday(i) !== undefined);
+  let shard = ALL_IN_ONE;
+  let mine: (i: Instrument) => boolean;
+  try {
+    if (values.shard !== undefined) shard = parseShard(values.shard);
+    const theShard = shard;
+    // Checked for every instrument now, so a bad pin stops the start rather than dropping one.
+    const homes = new Map(candidates.map((i) => [i.symbol, inShard(feedsFor(feedPlan, i.symbol), theShard)]));
+    mine = (i) => homes.get(i.symbol) === true;
+  } catch (error) {
+    if (error instanceof FeedPlanError) usage(error.message);
+    throw error;
+  }
+  if (shard.count > 1) {
+    const elsewhere = candidates.filter((i) => !mine(i)).map((i) => i.symbol);
+    console.log(`Shard ${shard.index}/${shard.count}${elsewhere.length > 0 ? `; other shards stream ${elsewhere.join(', ')}` : ''}`);
+  }
+  const instruments = candidates.filter((i) => mine(i) && liveToday(i) !== undefined);
   for (const i of candidates) if (liveToday(i) === undefined) console.log(`${i.symbol}: no live feed in the feed plan today, skipped`);
   if (instruments.length === 0) usage('Nothing to stream.');
 
@@ -132,7 +159,7 @@ async function main(): Promise<void> {
     hours: stores.raw,
     cache: redis,
     bus: liveBus,
-    publisher: `live-${randomUUID()}`,
+    publisher: `live-${shard.index}of${shard.count}-${randomUUID()}`,
     calendar: nyseCalendar(),
     log: (line) => console.log(`${new Date().toISOString().slice(11, 19)} ${line}`),
     nowMs: () => Date.now(),

@@ -109,6 +109,10 @@ Settled choices the client may ask about.
 - **Why:** backtest totals are checked against TradingView's exports, so the rules must be the same.
 - **Both ways the client described:** the same engine runs a backtest over all stored history at once, or bar by bar as bars close on the chart (including live), and the two give identical results on every closed bar.
 
+**D-10 · Live data can be split across several processes** (2026-11-13, M1-15c)
+- **What:** the process that streams live prices can run as several copies, each handling its own share of instruments, assigned automatically or pinned in the feed configuration. Adding copies is how hydration grows with the number of instruments.
+- **Why:** the client's concern is no bottleneck or dead end in the data layer. One process streaming everything was a hard limit; now each instrument has exactly one writer however many processes run, and charts are unaffected (tested with 1,000 browsers and two publishers).
+
 ## Closed
 **T-03 · Local developer access mode** (2026-11-11) · closed 2026-11-13 (M2-08)
 - **Was:** with `AIA_DEV_AUTH=1` every request counted as a local user with full access; without it, every request was refused.

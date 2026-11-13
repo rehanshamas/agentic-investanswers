@@ -241,7 +241,9 @@ export async function runLoad(options: LoadOptions): Promise<LoadReport> {
     await Promise.all(groups.map((g) => g.ready));
     log(`${options.clients} clients connected, ${gateway.stats.subscriptions} subscriptions; publishing for ${options.seconds} s at ${speed}x`);
 
-    const announcer = new LiveAnnouncer(bus, 'load');
+    // One publisher per instrument, as if each came from its own hydration shard (M1-15c):
+    // their announcements interleave on the bus, and clients count any resync as a failure.
+    const announcers = new Map(LOAD_INSTRUMENTS.map((i) => [i.symbol, new LiveAnnouncer(bus, `load-${i.symbol}`)]));
     const fakes = LOAD_INSTRUMENTS.map((i) => new FakeInstrument(i));
     let published = 0;
     let announcements = 0;
@@ -257,7 +259,7 @@ export async function runLoad(options: LoadOptions): Promise<LoadReport> {
         for (const updates of fake.tick(index, now)) {
           published += updates.length;
           announcements++;
-          void announcer.publish(updates);
+          void announcers.get(fake.instrument.symbol)?.publish(updates);
         }
       }
     }

@@ -89,3 +89,7 @@ export type { LiveHourStorePort } from './application/live-hour-store-port.js';
 export type { SealOutcome } from './application/live-hour-sealer.js';
 export { LiveHourSealer } from './application/live-hour-sealer.js';
 export { rawLiveHourKey } from './adapters/s3-raw-bar-store.js';
+
+// Live shards (M1-15c).
+export type { Shard } from './domain/shards.js';
+export { ALL_IN_ONE, inShard, parseShard, shardOf } from './domain/shards.js';
