@@ -5,11 +5,14 @@
 // the live gateway (M2-04), and listens. Settings, all optional:
 //   AIA_PORT (8080), AIA_HOST (127.0.0.1), AIA_REDIS_URL, AIA_S3_* and
 //   AIA_*_BUCKET as for the hydration commands, AIA_FEED_PLAN,
-//   AIA_DEV_AUTH=1 to treat every request as the local developer (until M2-08).
+//   AIA_DEV_AUTH=1 to treat every request as the local developer; otherwise the
+//   app's own sign-in (M2-08) at /auth/*, with accounts and sessions in
+//   DynamoDB: AIA_DYNAMODB_ENDPOINT (the local one, http://127.0.0.1:8000;
+//   "aws" for AWS itself), AIA_USERS_TABLE (aia-users).
 //
 // Exits 2 on a setup error.
 
-import { accessFromEnv } from '@aia/access';
+import { DynamoAccountStore, DynamoSessionStore, accessFromEnv, dynamoClient, ensureUsersTable } from '@aia/access';
 import { RawMinuteSource, S3RawBarStore, feedsFor, liveProviderOf, loadFeedPlan, rawProviderOf } from '@aia/hydration';
 import {
   CookedReader,
@@ -24,6 +27,16 @@ import {
 import { barTime, barTimeFromUtcParts, nyseCalendar, parseDateKey } from '@aia/shared-kernel';
 
 import { buildServer } from './server.js';
+
+/** Account and session stores in DynamoDB; locally the table is created if missing (CDK creates it in AWS). */
+async function usersStores(env: NodeJS.ProcessEnv) {
+  const table = env['AIA_USERS_TABLE'] ?? 'aia-users';
+  const endpoint = env['AIA_DYNAMODB_ENDPOINT'] ?? 'http://127.0.0.1:8000';
+  const local = endpoint !== 'aws';
+  const client = dynamoClient(local ? { endpoint, table, credentials: { accessKeyId: 'local', secretAccessKey: 'local' } } : { endpoint, table });
+  if (local) await ensureUsersTable(client, table);
+  return { accounts: new DynamoAccountStore(client, table), sessions: new DynamoSessionStore(client, table) };
+}
 
 async function main(): Promise<void> {
   const env = process.env;
@@ -76,7 +89,7 @@ async function main(): Promise<void> {
   });
   await bus.subscribe(live);
 
-  const access = accessFromEnv(env);
+  const access = env['AIA_DEV_AUTH'] === '1' ? accessFromEnv(env) : accessFromEnv(env, await usersStores(env));
   console.log(access.description);
   const app = await buildServer({ history, access, live, now: () => barTime(Math.floor(Date.now() / 1000)), logger: true });
 

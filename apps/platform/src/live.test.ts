@@ -3,7 +3,7 @@
 
 import { request as httpRequest } from 'node:http';
 
-import type { PrincipalResolverPort } from '@aia/access';
+import type { AccessPolicyPort, PrincipalResolverPort } from '@aia/access';
 import { accessFromEnv } from '@aia/access';
 import type { LiveServerMessage } from '@aia/market-data';
 import { BTCUSD, ETHUSD, HistoryQuery, LiveAnnouncer, LiveGateway, MemoryLiveBarsBus, MemoryRecentBarsCache, RecentBars } from '@aia/market-data';
@@ -12,6 +12,13 @@ import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { buildServer } from './server.js';
+
+/** A policy that refuses everything, as a plan that includes nothing would. */
+const REFUSE_ALL: AccessPolicyPort = {
+  canReadBars: () => Promise.resolve(false),
+  entitlements: () =>
+    Promise.resolve({ plan: { id: 'none', name: 'None' }, instruments: [], timeframes: [], upgradeUrl: 'https://example.com/upgrade' }),
+};
 
 const T0 = 1_762_800_000;
 const empty = { getRange: () => Promise.resolve([]), read: () => Promise.resolve([]) };
@@ -45,7 +52,7 @@ async function start(options: { principals?: PrincipalResolverPort; allow?: bool
     history,
     access: {
       principals: options.principals ?? dev.principals,
-      policy: options.allow === false ? { canReadBars: () => Promise.resolve(false) } : dev.policy,
+      policy: options.allow === false ? REFUSE_ALL : dev.policy,
     },
     live: gateway,
     now: () => barTime(T0),

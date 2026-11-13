@@ -9,6 +9,33 @@ services:
       MINIO_DEFAULT_BUCKETS: aia-raw,aia-cooked
     ports: ["9000:9000", "9001:9001"]
     volumes: ["./data/minio:/bitnami/minio/data"]
+  # A read-only web view of local storage: http://127.0.0.1:9002 (the MinIO build above has no web console).
+  # It logs in as a MinIO user that may only list and read (policy `browse`), so nothing can be uploaded or
+  # deleted from it (raw is write-once).
+  minio-viewer-user:
+    image: bitnamilegacy/minio:2025.7.23-debian-12-r5
+    depends_on: [minio]
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        until mc alias set local http://minio:9000 minio minio12345 >/dev/null 2>&1; do sleep 1; done;
+        printf '%s' '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:ListAllMyBuckets","s3:GetBucketLocation","s3:ListBucket","s3:GetObject"],"Resource":["arn:aws:s3:::*"]}]}' > /tmp/browse.json &&
+        mc admin policy create local browse /tmp/browse.json &&
+        mc admin user add local viewer viewer12345 &&
+        (mc admin policy detach local readonly --user viewer >/dev/null 2>&1 || true) &&
+        (mc admin policy attach local browse --user viewer || true)
+  storage-browser:
+    image: cloudlena/s3manager:v0.11.1
+    depends_on:
+      minio-viewer-user: { condition: service_completed_successfully }
+    environment:
+      ENDPOINT: minio:9000
+      ACCESS_KEY_ID: viewer
+      SECRET_ACCESS_KEY: viewer12345
+      USE_SSL: "false"
+      ALLOW_DELETE: "false"
+    ports: ["9002:8080"]
   dynamodb:
     image: amazon/dynamodb-local:2.6.1
     command: -jar DynamoDBLocal.jar -sharedDb -dbPath /data
