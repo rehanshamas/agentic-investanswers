@@ -60,6 +60,11 @@ The client must be able to change the source of any feed at any time with no har
 - **Neutral schemas.** Raw and cooked Parquet hold only `time, open, high, low, close, volume` as INT64 scaled whole numbers. Instrument precision belongs to the instrument, not the provider.
 - **Proved by tests.** Every adapter passes the same port contract tests, using recorded provider data. A switch test moves an instrument to a second (fake) provider mid-history and checks the reader and a full re-cook give the expected bars, with no code change.
 
+## Sign-in (M2-08; decision record T-01)
+- **The app's own accounts** in the access context, behind `PrincipalResolverPort`: `/auth/sign-up`, `/auth/sign-in`, `/auth/sign-out`, `/auth/me`. The session token goes on REST as `Authorization: Bearer`, and on `/live` as `?token=`. InvestAnswers sign-in later replaces the resolver; routes and checks do not change.
+- **Stored in DynamoDB** (DynamoDB Local until staging): one table, `pk`/`sk`; an account and its email are written in one conditional transaction, so emails stay unique; sessions are stored as a SHA-256 of the token, with a TTL. Passwords are salted scrypt hashes (node:crypto, no extra dependency).
+- `AIA_DEV_AUTH=1` skips sign-in on a developer's machine only.
+
 ## Indicator engine (M3-01, M3-04)
 - **One shape for every indicator** (`contexts/indicators`): declared inputs with limits, declared outputs (lines, bands, markers, levels), and `step(state, bar)` that returns a new state and leaves the old one unchanged. ATR later is one new definition (decision record F-02).
 - **Runs on the server, cached in Redis** by indicator + version + instrument + timeframe + run start + settings. An entry holds the state after the last closed bar, that bar, and the newest 2,000 drawn points. A new closed bar is one step; the forming bar is previewed from the closed state and never cached; a changed last bar (a re-cook) means recompute.

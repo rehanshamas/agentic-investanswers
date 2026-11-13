@@ -26,6 +26,10 @@ jobs:
         image: redis:7.4-alpine
         ports: ["6379:6379"]
         options: --health-cmd "redis-cli ping" --health-interval 2s --health-timeout 2s --health-retries 15
+      # DynamoDB stand-in for the account and session store tests (M2-08), which otherwise skip.
+      dynamodb:
+        image: amazon/dynamodb-local:2.6.1
+        ports: ["8000:8000"]
     env:
       AIA_S3_ENDPOINT: http://127.0.0.1:9000
       AIA_REDIS_TEST_URL: redis://127.0.0.1:6379/15
@@ -41,6 +45,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Wait for MinIO
         run: for i in $(seq 1 30); do curl -sf http://127.0.0.1:9000/minio/health/live && exit 0; sleep 2; done; exit 1
+      - name: Wait for DynamoDB Local
+        run: for i in $(seq 1 30); do curl -s -o /dev/null http://127.0.0.1:8000 && exit 0; sleep 2; done; exit 1
       - name: Lint, test, typecheck (affected)
         run: |
           BASE=${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD~1' }}

@@ -6,6 +6,7 @@
 //   GET /health
 //   GET /bars?instrument=BTCUSD&tf=5m&limit=500&before=1762800000
 //   GET /live   upgraded to a WebSocket; the protocol is in @aia/market-data (live-protocol.ts)
+//   /auth/*     the app's own sign-in (M2-08), when configured; see auth-routes.ts
 //
 // Errors are `{ error: { code, message } }`.
 
@@ -18,9 +19,11 @@ import type { BarTime } from '@aia/shared-kernel';
 import Fastify from 'fastify';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 
+import { mountAuthRoutes } from './auth-routes.js';
+
 export interface ServerDeps {
   readonly history: Pick<HistoryQuery, 'parse' | 'run'>;
-  readonly access: Pick<Access, 'principals' | 'policy'>;
+  readonly access: Pick<Access, 'principals' | 'policy' | 'signIn'>;
   /** The current time, as a bar time. */
   readonly now: () => BarTime;
   /** Mounts GET /live when given (M2-04). */
@@ -41,8 +44,8 @@ const error = (code: string, message: string) => ({ error: { code, message } });
 
 /**
  * What a request presents. Browsers cannot set headers on a WebSocket, so
- * /live also takes `?token=`, passed on as a bearer token; M2-08 decides
- * which form real sign-in uses.
+ * /live also takes `?token=`, passed on as a bearer token. The app's own
+ * sign-in (M2-08) uses both: the header on REST, the query on /live.
  */
 function credentials(request: FastifyRequest) {
   const token = (request.query as Record<string, unknown> | undefined)?.['token'];
@@ -57,6 +60,8 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   await app.register(websocket, { options: { maxPayload: LIVE_MAX_CLIENT_MESSAGE * 4 } });
 
   app.get('/health', () => ({ ok: true }));
+
+  if (deps.access.signIn !== undefined) mountAuthRoutes(app, deps.access.signIn);
 
   app.get('/bars', async (request, reply) => {
     // Every request carries a principal (CLAUDE.md rule 4), checked first.
@@ -133,6 +138,12 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     reply.code(404).send(error('not_found', `no route ${request.method} ${request.url.split('?')[0] ?? ''}`)),
   );
   app.setErrorHandler((failure, request, reply) => {
+    // Fastify's own refusals of a bad request (unreadable JSON, an oversized
+    // or unsupported body) keep their 4xx status rather than becoming a 500.
+    const status = (failure as { statusCode?: unknown }).statusCode;
+    if (typeof status === 'number' && status >= 400 && status < 500) {
+      return reply.code(status).send(error('bad_request', 'the request body could not be read'));
+    }
     request.log.error(failure);
     return reply.code(500).send(error('internal', 'something went wrong; try again'));
   });

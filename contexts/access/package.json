@@ -11,6 +11,6 @@
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc -p tsconfig.json"
   },
-  "dependencies": { "@aia/shared-kernel": "workspace:*" },
+  "dependencies": { "@aia/shared-kernel": "workspace:*", "@aws-sdk/client-dynamodb": "^3.1168.0" },
   "nx": { "tags": ["type:context"] }
 }
