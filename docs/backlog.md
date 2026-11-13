@@ -58,11 +58,11 @@ To start a task, ask Claude: "Start task M1-06". It copies the template into `ta
 | M3-02 | Settings schema → settings dialog (generated from the declared inputs, with range limits) | M3-01, M2-05 | Dialog renders from the schema; out-of-range values rejected server-side |
 | M3-03 | **Indicator parity harness:** signals exact, plotted values to the tick, backtest totals exact; reports the first differing bar | M3-01 | Runs against the demo indicator fixtures |
 | M3-04 | Indicator engine: runs server-side, caches by indicator+version+instrument+tf+settings, extends by one bar | M3-01, M2-02 | Cache test; result extended rather than recomputed |
-| M3-05 | Demo indicator end to end: **a simple moving average**, standing in for ATR until its source arrives (Sham, 2026-11-13; decision record F-02) (chart, dialog, output types) | M3-02, M3-04 | Visible on the staging chart; parity green against its own exports |
+| M3-05 | The MVP indicator end to end: **a simple moving average** and its demo strategy (Sham, 2026-11-13; decision record D-11) (chart, dialog, output types) | M3-02, M3-04 | Visible on the staging chart; parity green against its own exports |
 | M3-06 | Backtest engine (shared): trades, profit, ROI, win rate, totals | M3-01 | Parity green on demo indicator backtest exports |
-| M3-07a | ATR port, slice 1: plotted values (`agentic-investanswers-indicators`) | M3-03, source | Values parity green |
-| M3-07b | ATR port, slice 2: signals | M3-07a | Signals parity green |
-| M3-07c | ATR port, slice 3: backtest | M3-06, M3-07b | Backtest parity green; 100% across all exports |
+| M3-07a | **Phase 1, not in the MVP (D-11).** ATR port, slice 1: plotted values (`agentic-investanswers-indicators`) | M3-03, source | Values parity green |
+| M3-07b | **Phase 1, not in the MVP (D-11).** ATR port, slice 2: signals | M3-07a | Signals parity green |
+| M3-07c | **Phase 1, not in the MVP (D-11).** ATR port, slice 3: backtest | M3-06, M3-07b | Backtest parity green; 100% across all exports |
 | M3-08 | Leak test: no internals in API, WebSocket or the browser bundle | M3-05 | CI test greps responses and bundle for internal field names |
 
 ## M4: Agent access and MVP review (Week 4, beside the ATR port; Week 5 is buffer)
