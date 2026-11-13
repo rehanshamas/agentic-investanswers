@@ -1,6 +1,6 @@
 // Plan-based access on placeholder plans (M2-09; decision record T-02). A
-// human's plan comes from their account's email; an agent gets the default
-// plan until M4-01 links agents to a user. The plan book is configuration
+// human's plan comes from their account's email; an agent's from its owner's
+// account (M4-01). The plan book is configuration
 // (config/plans.json), so changing plans changes no code.
 
 import type { Timeframe } from '@aia/shared-kernel';
@@ -32,8 +32,10 @@ export class PlanPolicy implements AccessPolicyPort {
   }
 
   private async planOf(principal: Principal): Promise<Plan> {
-    if (principal.kind !== 'human') return planFor(this.book, undefined);
-    const account = await this.accounts.findById(principal.id);
+    // An agent reads on its owner's plan (M4-01); one with no owner gets the default plan.
+    const accountId = principal.kind === 'human' ? principal.id : principal.owner;
+    if (accountId === undefined) return planFor(this.book, undefined);
+    const account = await this.accounts.findById(accountId);
     return planFor(this.book, account?.email);
   }
 }

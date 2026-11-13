@@ -22,7 +22,7 @@ export interface Plan {
 
 export interface PlanBook {
   readonly plans: readonly Plan[];
-  /** The plan of every account not listed in `assignments`, and of agents until M4-01 links them to a user. */
+  /** The plan of every account not listed in `assignments` (an agent has its owner's plan). */
   readonly defaultPlan: string;
   /** Normalised email -> plan id. A placeholder until InvestAnswers billing says who pays for what. */
   readonly assignments: ReadonlyMap<string, string>;
