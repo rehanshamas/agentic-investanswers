@@ -17,7 +17,7 @@ import type { HistoryErrorCode, HistoryQuery, LiveGateway } from '@aia/market-da
 import { LIVE_MAX_CLIENT_MESSAGE } from '@aia/market-data';
 import type { BarTime } from '@aia/shared-kernel';
 import Fastify from 'fastify';
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyLoggerOptions, FastifyRequest } from 'fastify';
 
 import { mountAuthRoutes } from './auth-routes.js';
 
@@ -30,7 +30,8 @@ export interface ServerDeps {
   readonly live?: Pick<LiveGateway, 'open'>;
   /** How often idle WebSockets are pinged; one that missed the last ping is closed. Default 30 s. */
   readonly pingMs?: number;
-  readonly logger?: boolean;
+  /** Request logging; `{ stream }` sends it to a stream (tests). Session tokens are masked either way. */
+  readonly logger?: boolean | { readonly stream: NodeJS.WritableStream };
 }
 
 const STATUS: Readonly<Record<HistoryErrorCode, number>> = {
@@ -53,8 +54,30 @@ function credentials(request: FastifyRequest) {
   return { authorization };
 }
 
+/** A URL with any `token=` value masked, so session tokens never reach the logs. */
+export function redactUrl(url: string): string {
+  return url.replace(/([?&]token=)[^&#]*/gi, '$1[redacted]');
+}
+
+function loggerOptions(logger: ServerDeps['logger']): FastifyLoggerOptions | false {
+  if (logger === undefined || logger === false) return false;
+  return {
+    ...(logger === true ? {} : { stream: logger.stream }),
+    // /live carries the session token in its query (browsers cannot set
+    // WebSocket headers); the Authorization header is never logged by default.
+    serializers: {
+      req: (request: FastifyRequest) => ({
+        method: request.method,
+        url: redactUrl(request.url),
+        hostname: request.hostname,
+        remoteAddress: request.ip,
+      }),
+    },
+  };
+}
+
 export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
-  const app = Fastify({ logger: deps.logger ?? false });
+  const app = Fastify({ logger: loggerOptions(deps.logger) });
   await app.register(compress, { global: true });
   // Client messages are tiny (live-protocol.ts); anything larger is refused by ws itself.
   await app.register(websocket, { options: { maxPayload: LIVE_MAX_CLIENT_MESSAGE * 4 } });

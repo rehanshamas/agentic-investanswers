@@ -2,6 +2,7 @@
 // in, sign out, and the session token accepted by /bars and /live.
 
 import { request as httpRequest } from 'node:http';
+import { PassThrough } from 'node:stream';
 
 import { AllowEverythingPolicy, MemoryAccountStore, MemorySessionStore, NodeCryptoTokens, ScryptPasswordHasher, SignIn } from '@aia/access';
 import { BTCUSD, ETHUSD, HistoryQuery, LiveGateway, MemoryRecentBarsCache, RecentBars } from '@aia/market-data';
@@ -9,7 +10,7 @@ import { barTime } from '@aia/shared-kernel';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { buildServer } from './server.js';
+import { buildServer, redactUrl } from './server.js';
 
 const T0 = 1_762_800_000;
 const empty = { getRange: () => Promise.resolve([]), read: () => Promise.resolve([]) };
@@ -23,7 +24,7 @@ afterEach(async () => {
   app = undefined;
 });
 
-async function start(options: { listen?: boolean } = {}) {
+async function start(options: { listen?: boolean; logStream?: NodeJS.WritableStream } = {}) {
   const signIn = new SignIn({
     accounts: new MemoryAccountStore(),
     sessions: new MemorySessionStore(),
@@ -42,6 +43,7 @@ async function start(options: { listen?: boolean } = {}) {
     access: { principals: signIn, policy: new AllowEverythingPolicy(), signIn },
     live: gateway,
     now: () => barTime(T0),
+    ...(options.logStream ? { logger: { stream: options.logStream } } : {}),
   });
   if (options.listen) await app.listen({ port: 0, host: '127.0.0.1' });
   return app;
@@ -142,5 +144,28 @@ describe('GET /live with a session token', () => {
     expect(await upgradeStatus(port, `/live?token=${token}`)).toBe(101);
     await post(a, '/auth/sign-out', undefined, token);
     expect(await upgradeStatus(port, `/live?token=${token}`)).toBe(401);
+  });
+});
+
+describe('logs', () => {
+  it('masks the token in a logged URL', () => {
+    expect(redactUrl('/live?token=abc123')).toBe('/live?token=[redacted]');
+    expect(redactUrl('/live?x=1&token=abc&y=2')).toBe('/live?x=1&token=[redacted]&y=2');
+    expect(redactUrl('/bars?instrument=BTCUSD')).toBe('/bars?instrument=BTCUSD');
+  });
+
+  it('never writes a session token to the request log', async () => {
+    const stream = new PassThrough();
+    let logged = '';
+    stream.on('data', (chunk: Buffer) => (logged += chunk.toString()));
+    const a = await start({ listen: true, logStream: stream });
+    const address = a.server.address();
+    const port = typeof address === 'object' && address !== null ? address.port : 0;
+    const token = await signUp(a);
+    expect(await upgradeStatus(port, `/live?token=${token}`)).toBe(101);
+    await getWith(a, '/bars?instrument=BTCUSD&tf=5m', token);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(logged).toContain('/live?token=[redacted]');
+    expect(logged).not.toContain(token);
   });
 });
