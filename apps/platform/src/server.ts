@@ -7,7 +7,8 @@
 //   GET /bars?instrument=BTCUSD&tf=5m&limit=500&before=1762800000
 //   GET /live   upgraded to a WebSocket; the protocol is in @aia/market-data (live-protocol.ts)
 //   GET /plan   what the caller's plan includes, and where to upgrade (M2-09)
-//   /auth/*     the app's own sign-in (M2-08), when configured; see auth-routes.ts
+//   /auth/*     the app's own sign-in (M2-08) and agent keys (M4-01), when configured;
+//               see auth-routes.ts and agent-key-routes.ts
 //
 // Errors are `{ error: { code, message } }`. A plan refusal (403 forbidden)
 // adds `upgradeUrl`. A refused live subscription is a `forbidden` message on
@@ -22,11 +23,12 @@ import type { BarTime } from '@aia/shared-kernel';
 import Fastify from 'fastify';
 import type { FastifyInstance, FastifyLoggerOptions, FastifyRequest } from 'fastify';
 
+import { mountAgentKeyRoutes } from './agent-key-routes.js';
 import { mountAuthRoutes } from './auth-routes.js';
 
 export interface ServerDeps {
   readonly history: Pick<HistoryQuery, 'parse' | 'run'>;
-  readonly access: Pick<Access, 'principals' | 'policy' | 'signIn'>;
+  readonly access: Pick<Access, 'principals' | 'policy' | 'signIn' | 'agentKeys'>;
   /** The current time, as a bar time. */
   readonly now: () => BarTime;
   /** Mounts GET /live when given (M2-04). */
@@ -88,6 +90,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   app.get('/health', () => ({ ok: true }));
 
   if (deps.access.signIn !== undefined) mountAuthRoutes(app, deps.access.signIn);
+  if (deps.access.agentKeys !== undefined) mountAgentKeyRoutes(app, deps.access.agentKeys, deps.access.principals);
 
   app.get('/bars', async (request, reply) => {
     // Every request carries a principal (CLAUDE.md rule 4), checked first.

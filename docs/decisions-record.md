@@ -26,9 +26,9 @@ Where something we were waiting for has not arrived, so we use an agreed alterna
 - **For now:** Sham decided on 2026-11-13 to stay on the free plan for the client demo that day, and to ask InvestAnswers afterwards whether to move to a paid plan.
 - **Closes when:** a Massive plan with WebSocket access is chosen, together with the delay promised to customers (OI-24). The live stream (M1-07b) is then built on the same interfaces crypto uses.
 
-**F-04 · Our own agent keys, if InvestAnswers sign-in cannot issue agent tokens** (planned)
-- **Why:** it is still open whether InvestAnswers sign-in can issue tokens for agents (OI-25, due 2026-11-23).
-- **Affects:** agent access (M4-01) would use our own scoped, read-only keys.
+**F-04 · Our own agent keys, until InvestAnswers sign-in can issue agent tokens** (2026-11-13)
+- **Why:** it is still open whether InvestAnswers sign-in can issue tokens for agents (OI-25, due 2026-11-23), and the app's own sign-in is in place meanwhile (T-01).
+- **Affects:** agent access (M4-01). A signed-in user creates a named agent key, shown once and stored only as a hash, and can revoke it at any time (up to 10 per account). The agent uses it like a sign-in token, reads on its user's plan, and is read-only: it cannot change the account, its keys or anything else.
 - **Closes when:** InvestAnswers confirms it can issue agent tokens, which then plug in behind the same interface.
 
 ## Temporary decisions
