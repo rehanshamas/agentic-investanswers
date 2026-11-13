@@ -116,6 +116,9 @@ importers:
       '@aia/shared-kernel':
         specifier: workspace:*
         version: link:../../shared-kernel
+      redis:
+        specifier: ^5.12.1
+        version: 5.12.1
 
   contexts/market-data:
     dependencies:
