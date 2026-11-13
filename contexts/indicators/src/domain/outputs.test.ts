@@ -46,6 +46,24 @@ describe('toDrawn', () => {
     expect(point.values).toEqual({ basis: null, channel: null, signal: null, stop: null });
   });
 
+  it.each([
+    [1.005, 1.01],
+    [1.255, 1.26],
+    [0.145, 0.15],
+    [60200.005, 60200.01],
+    [-1.005, -1],
+    [-1.006, -1.01],
+    [2.675, 2.68],
+    [123.4549999, 123.45],
+  ])('rounds %d to the tick as %d (half ticks go up)', (raw, drawn) => {
+    expect(toDrawn(specs, t, { basis: raw }, 2).values.basis).toBe(drawn);
+  });
+
+  it('cuts long marker labels, so they cannot carry internal values out', () => {
+    const point = toDrawn(specs, t, { signal: { side: 'above', price: 1, text: 'Buy @ atr=123.4567 state=9' } }, 2);
+    expect(point.values.signal).toEqual({ side: 'above', price: 1, text: 'Buy @ atr=123.45' });
+  });
+
   it('never draws minus zero', () => {
     expect(Object.is(toDrawn(specs, t, { basis: -0.001 }, 2).values.basis, 0)).toBe(true);
   });
