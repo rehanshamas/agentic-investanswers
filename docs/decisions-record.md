@@ -23,6 +23,7 @@ Where something we were waiting for has not arrived, so we use an agreed alterna
 **F-03 · Stocks are history only, with no live stream** (2026-11-10)
 - **Why:** the current Massive plan refuses WebSocket access, both real time and 15-minute delayed (OI-28).
 - **Affects:** NVDA and TSLA 1-minute history is stored; no live stock bars. Crypto live is unaffected.
+- **For now:** Sham decided on 2026-11-13 to stay on the free plan for the client demo that day, and to ask InvestAnswers afterwards whether to move to a paid plan.
 - **Closes when:** a Massive plan with WebSocket access is chosen, together with the delay promised to customers (OI-24). The live stream (M1-07b) is then built on the same interfaces crypto uses.
 
 **F-04 · Our own agent keys, if InvestAnswers sign-in cannot issue agent tokens** (planned)
@@ -60,9 +61,6 @@ Choices made to keep progress going, each built so it can be swapped later witho
 
 ## Postponed decisions
 Open questions, what we assume meanwhile, and the latest date the answer is useful.
-
-**P-01 · Data licence and daily bars** (OI-22, due 2026-11-13)
-- **Meanwhile:** we keep data permanently, and use provider daily bars only if building them from 1-minute bars fails parity.
 
 **P-02 · Delay promised to customers; what a "tenant" is** (OI-24, due 2026-11-20)
 - **Meanwhile:** crypto is live, about 2 to 3 seconds after each minute closes, with forming bars ticking with trades. Stocks are history only (F-03). The freshness dashboard (M4-05) waits for an agreed target.
@@ -107,4 +105,6 @@ Settled choices the client may ask about.
 - **Why:** a chart loads thousands of bars at once; compressed, the same response is several times smaller, so charts open faster, especially on mobile.
 
 ## Closed
-None yet.
+**P-01 · Data licence and daily bars** (OI-22, due 2026-11-13) · closed 2026-11-13
+- **Was:** open question; meanwhile we kept data permanently and used provider daily bars only if building them from 1-minute bars failed parity.
+- **Outcome:** Sham chose the default on 2026-11-13: data is kept permanently, and daily, weekly and monthly bars are built from 1-minute bars, with provider daily bars only if that fails parity. If InvestAnswers' data licence requires otherwise, tell us and it reopens.
