@@ -161,6 +161,40 @@ describe('IndicatorEngine', () => {
     expect(source.reads).toBe(0);
   });
 
+  it('recomputes instead of failing when the cache is down', async () => {
+    const source = new MemoryBarSource([...inBlock]);
+    const seen: unknown[] = [];
+    const down = {
+      get: () => Promise.reject(new Error('Redis is unreachable')),
+      set: () => Promise.reject(new Error('Redis is unreachable')),
+    };
+    const engine = new IndicatorEngine({ registry, bars: source, cache: down, windowBars: WINDOW, onCacheError: (e) => seen.push(e) });
+    const result = await points(engine);
+    expect(result.points).toEqual(expected(inBlock));
+    expect(engine.stats.cacheErrors).toBe(2);
+    expect(seen).toHaveLength(2);
+  });
+
+  it('treats a corrupt cache entry as a miss, and replaces it', async () => {
+    const { engine, cache } = setUp([...inBlock]);
+    const first = await points(engine);
+    const [key] = (cache as unknown as { entries: Map<string, { value: string }> }).entries.keys();
+    await cache.set(key as string, '{not json', 60);
+    const again = await points(engine);
+    expect(again.points).toEqual(first.points);
+    expect(engine.stats.cacheErrors).toBe(1);
+    const third = engine.stats.steps;
+    await points(engine);
+    expect(engine.stats.steps - third).toBe(0);
+  });
+
+  it('falls back to 500 points when the limit is not a number', async () => {
+    const source = new MemoryBarSource(makeBars(1_000));
+    const engine = new IndicatorEngine({ registry, bars: source, cache: new MemoryIndicatorOutputCache(), windowBars: 400 });
+    const result = await points(engine, { limit: Number.NaN });
+    expect(result.points).toHaveLength(500);
+  });
+
   it('returns drawn values only, never indicator state', async () => {
     const { engine } = setUp([...inBlock]);
     const text = JSON.stringify(await points(engine));

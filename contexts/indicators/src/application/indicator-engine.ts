@@ -98,6 +98,8 @@ export interface EngineStats {
   misses: number;
   /** Hits whose last bar had changed in the store, so the run was recomputed. */
   stale: number;
+  /** Cache reads or writes that failed, or entries that could not be read; each treated as a miss. */
+  cacheErrors: number;
 }
 
 export interface IndicatorEngineDeps {
@@ -106,6 +108,8 @@ export interface IndicatorEngineDeps {
   readonly cache: IndicatorOutputCachePort;
   /** Bars per run-window block; tests make it small. */
   readonly windowBars?: number;
+  /** Told when the cache fails; the engine carries on without it. */
+  readonly onCacheError?: (error: unknown) => void;
 }
 
 function sameBar(a: Bar, b: Bar): boolean {
@@ -127,7 +131,7 @@ interface Progress {
 }
 
 export class IndicatorEngine {
-  readonly stats: EngineStats = { steps: 0, hits: 0, misses: 0, stale: 0 };
+  readonly stats: EngineStats = { steps: 0, hits: 0, misses: 0, stale: 0, cacheErrors: 0 };
   private readonly windowBars: number;
 
   constructor(private readonly deps: IndicatorEngineDeps) {
@@ -141,7 +145,8 @@ export class IndicatorEngine {
     }
     const checked = checkSettings(definition.inputs, request.settings);
     if (!checked.ok) return { ok: false, code: 'invalid_settings', errors: checked.errors };
-    const limit = Math.min(Math.max(1, Math.floor(request.limit ?? 500)), ENGINE_MAX_POINTS);
+    const asked = request.limit ?? 500;
+    const limit = Number.isFinite(asked) ? Math.min(Math.max(1, Math.floor(asked)), ENGINE_MAX_POINTS) : 500;
 
     const { instrument, timeframe } = request;
     const fresh = startRun(definition, checked.settings, instrument);
@@ -197,8 +202,7 @@ export class IndicatorEngine {
     instrument: Instrument,
     timeframe: Timeframe,
   ): Promise<{ progress: Progress; extended: boolean } | undefined> {
-    const text = await this.deps.cache.get(key);
-    const entry = text === undefined ? undefined : (JSON.parse(text) as CacheEntry);
+    const entry = await this.readEntry(key);
     if (entry === undefined || entry.format !== ENTRY_FORMAT) {
       this.stats.misses += 1;
       return undefined;
@@ -210,9 +214,36 @@ export class IndicatorEngine {
       return undefined;
     }
     this.stats.hits += 1;
-    const run: IndicatorRun<unknown> = { ...fresh, state: decodeState(entry.state), lastTime: entry.lastBar.time };
+    let state: unknown;
+    try {
+      state = decodeState(entry.state);
+    } catch (error) {
+      this.cacheFailed(error);
+      return undefined;
+    }
+    const run: IndicatorRun<unknown> = { ...fresh, state, lastTime: entry.lastBar.time };
     const progress = this.commitAll({ run, points: [...entry.points], lastBar: entry.lastBar }, newer);
     return { progress, extended: newer.length > 0 };
+  }
+
+  /**
+   * The cached entry, or undefined on a miss. The cache is an optimisation:
+   * if Redis is down or an entry is corrupt, the engine recomputes rather
+   * than fail the request (as /bars falls back to the store).
+   */
+  private async readEntry(key: string): Promise<CacheEntry | undefined> {
+    try {
+      const text = await this.deps.cache.get(key);
+      return text === undefined ? undefined : (JSON.parse(text) as CacheEntry);
+    } catch (error) {
+      this.cacheFailed(error);
+      return undefined;
+    }
+  }
+
+  private cacheFailed(error: unknown): void {
+    this.stats.cacheErrors += 1;
+    this.deps.onCacheError?.(error);
   }
 
   private commitAll(progress: Progress, bars: readonly Bar[]): Progress {
@@ -236,6 +267,11 @@ export class IndicatorEngine {
       state: encodeState(progress.run.state),
       points: progress.points,
     };
-    await this.deps.cache.set(key, JSON.stringify(entry), ENGINE_CACHE_TTL_SECONDS);
+    try {
+      await this.deps.cache.set(key, JSON.stringify(entry), ENGINE_CACHE_TTL_SECONDS);
+    } catch (error) {
+      // Best effort: the answer is already computed; the next request recomputes.
+      this.cacheFailed(error);
+    }
   }
 }
