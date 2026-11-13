@@ -41,6 +41,28 @@ describe('checkSettings', () => {
     expect(errorsOf(given)).toEqual(expected);
   });
 
+  it('refuses decimals off the step grid, so equal settings share one cache key', () => {
+    // offset: min 0, step 0.5
+    expect(errorsOf({ offset: 1.2345678 })).toEqual([['offset', 'off_step']]);
+    expect(errorsOf({ offset: 0.25 })).toEqual([['offset', 'off_step']]);
+    expect(checkSettings(inputs, { offset: 2.5 })).toMatchObject({ ok: true, settings: { offset: 2.5 } });
+  });
+
+  it('absorbs float noise and keeps the grid value itself', () => {
+    const tenths = [{ kind: 'float', key: 'm', label: 'M', default: 0.1, min: 0, max: 5, step: 0.1 }] as const;
+    const result = checkSettings(tenths, { m: 0.1 + 0.2 });
+    expect(result).toEqual({ ok: true, settings: { m: 0.3 } });
+    if (!result.ok) return;
+    expect(settingsKey(tenths, result.settings)).toBe(settingsKey(tenths, { m: 0.3 }));
+  });
+
+  it('refuses whole numbers off a step larger than 1, counted from the minimum', () => {
+    const fives = [{ kind: 'int', key: 'n', label: 'N', default: 5, min: 5, max: 100, step: 5 }] as const;
+    expect(checkSettings(fives, { n: 25 }).ok).toBe(true);
+    const result = checkSettings(fives, { n: 7 });
+    expect(result).toEqual({ ok: false, errors: [{ key: 'n', code: 'off_step', message: 'N must go in steps of 5 from 5' }] });
+  });
+
   it('reports every problem at once, with words fit for the user', () => {
     const result = checkSettings(inputs, { length: 9999, offset: 'x', basis: 'nope' });
     expect(result.ok).toBe(false);
