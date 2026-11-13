@@ -10,8 +10,8 @@ Last updated: 2026-11-13.
 Where something we were waiting for has not arrived, so we use an agreed alternative.
 
 **F-01 · Local environment instead of AWS staging** (2026-11-13)
-- **Why:** AWS account access (owner input OI-20, due 2026-11-10) has not arrived. Expected 2026-11-14.
-- **Affects:** everything runs and is tested on local stand-ins: MinIO for S3, Redis, DynamoDB Local. Demos run locally. Deployment (M2-01) waits.
+- **Why:** AWS account access (owner input OI-20, due 2026-11-10) has not arrived. Sham confirmed on 2026-11-13 that everything stays local until it does.
+- **Affects:** everything runs and is tested on local stand-ins: MinIO for S3, Redis, DynamoDB Local. Demos run locally, including the client demo on 2026-11-13. Deployment (M2-01) waits.
 - **Closes when:** access arrives and the staging stack is deployed. Nothing built so far depends on running locally.
 
 **F-02 · Simple moving average stands in for the ATR indicator** (2026-11-13)
@@ -23,6 +23,7 @@ Where something we were waiting for has not arrived, so we use an agreed alterna
 **F-03 · Stocks are history only, with no live stream** (2026-11-10)
 - **Why:** the current Massive plan refuses WebSocket access, both real time and 15-minute delayed (OI-28).
 - **Affects:** NVDA and TSLA 1-minute history is stored; no live stock bars. Crypto live is unaffected.
+- **For now:** Sham decided on 2026-11-13 to stay on the free plan for the client demo that day, and to ask InvestAnswers afterwards whether to move to a paid plan.
 - **Closes when:** a Massive plan with WebSocket access is chosen, together with the delay promised to customers (OI-24). The live stream (M1-07b) is then built on the same interfaces crypto uses.
 
 **F-04 · Our own agent keys, if InvestAnswers sign-in cannot issue agent tokens** (planned)
@@ -60,9 +61,6 @@ Choices made to keep progress going, each built so it can be swapped later witho
 
 ## Postponed decisions
 Open questions, what we assume meanwhile, and the latest date the answer is useful.
-
-**P-01 · Data licence and daily bars** (OI-22, due 2026-11-13)
-- **Meanwhile:** we keep data permanently, and use provider daily bars only if building them from 1-minute bars fails parity.
 
 **P-02 · Delay promised to customers; what a "tenant" is** (OI-24, due 2026-11-20)
 - **Meanwhile:** crypto is live, about 2 to 3 seconds after each minute closes, with forming bars ticking with trades. Stocks are history only (F-03). The freshness dashboard (M4-05) waits for an agreed target.
@@ -102,5 +100,11 @@ Settled choices the client may ask about.
 - **What:** the chart uses KLineChart, free and open source (Apache 2.0), with its built-in indicators turned off; our own indicator engine draws everything. Research charts (backtests, comparisons) will use Apache ECharts.
 - **Why:** the client wants no TradingView libraries. KLineChart is the strongest free open-source library built for price bars, and suits an indicators and research platform.
 
+**D-08 · API responses are compressed** (2026-11-13)
+- **What:** the History API compresses large responses (gzip) for browsers and agents that accept it, using `@fastify/compress`, the compression plugin maintained by the Fastify team. Added with the History API (M2-03, #79); confirmed by Sham on 2026-11-13.
+- **Why:** a chart loads thousands of bars at once; compressed, the same response is several times smaller, so charts open faster, especially on mobile.
+
 ## Closed
-None yet.
+**P-01 · Data licence and daily bars** (OI-22, due 2026-11-13) · closed 2026-11-13
+- **Was:** open question; meanwhile we kept data permanently and used provider daily bars only if building them from 1-minute bars failed parity.
+- **Outcome:** Sham chose the default on 2026-11-13: data is kept permanently, and daily, weekly and monthly bars are built from 1-minute bars, with provider daily bars only if that fails parity. If InvestAnswers' data licence requires otherwise, tell us and it reopens.
