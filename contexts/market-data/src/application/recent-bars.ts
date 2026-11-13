@@ -113,6 +113,9 @@ export class RecentBars {
     for (let round = 0; round < PAGE_WIDENINGS && bars.length < limit && low > earliest; round++) {
       span *= 2;
       const from = barTime(Math.max(lookbackStart(timeframe, until, span), earliest));
+      // A window filled long ago can reach further back than this widening;
+      // what it gave is already held, so only read below it, and never move `low` forward.
+      if (from >= low) continue;
       const older = await this.fromStore(instrument.symbol, timeframe, from, barTime(low - 1));
       bars = [...older, ...bars];
       low = from;

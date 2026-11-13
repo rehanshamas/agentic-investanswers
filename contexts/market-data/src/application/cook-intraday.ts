@@ -149,6 +149,19 @@ export class CookIntraday {
     return written;
   }
 
+  /**
+   * Rebuild every intraday timeframe across `[from, until]` from one read of
+   * raw, replacing what is stored there. The compactor (M1-15) runs it per
+   * settled day, so `from` and `until` should be whole bucket boundaries.
+   */
+  async cookRangeAll(instrument: Instrument, from: BarTime, until: BarTime): Promise<void> {
+    const minutes = await this.deps.source.read(instrument.symbol, from, until);
+    for (const timeframe of INTRADAY_ROLLUPS) {
+      const bars = rollUp(instrument, timeframe, minutes, this.deps.calendar);
+      await this.writeMerged(instrument.symbol, timeframe, bars, (time) => time >= from && time <= until);
+    }
+  }
+
   /** Apply new minutes to every intraday timeframe, shortest first. */
   async applyNewMinutesToAll(
     instrument: Instrument,

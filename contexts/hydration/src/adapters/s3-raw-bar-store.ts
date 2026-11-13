@@ -16,7 +16,7 @@ import type { LiveGap } from '../domain/live-minutes.js';
 import { assertStorableFill, assertStorableRawDay, dayEnd, dayStart, mergeDay } from '../domain/raw-day.js';
 import { decodeBars, encodeBars } from './parquet-bars.js';
 import type { S3StoreConfig } from './s3-objects.js';
-import { createS3Client, exists, get, listKeys, putIfAbsent } from './s3-objects.js';
+import { createS3Client, ensureBucket, exists, get, listKeys, putIfAbsent } from './s3-objects.js';
 import { parseDateKey } from '@aia/shared-kernel';
 
 /**
@@ -92,6 +92,11 @@ export class S3RawBarStore implements RawBarStorePort, LiveRawStorePort {
   constructor(config: S3StoreConfig, client?: S3Client) {
     this.client = client ?? createS3Client(config);
     this.bucket = config.bucket;
+  }
+
+  /** Create the bucket if it does not exist. */
+  ensureBucket(): Promise<void> {
+    return ensureBucket(this.client, this.bucket);
   }
 
   async putDay(ref: RawDayRef, bars: readonly Bar[]): Promise<void> {

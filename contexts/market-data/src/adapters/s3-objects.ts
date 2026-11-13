@@ -7,7 +7,9 @@
 // staging by leaving both unset (docs/architecture.md).
 
 import {
+  CreateBucketCommand,
   GetObjectCommand,
+  HeadBucketCommand,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -19,16 +21,33 @@ export interface S3StoreConfig {
   readonly endpoint?: string;
   readonly region?: string;
   readonly credentials?: { readonly accessKeyId: string; readonly secretAccessKey: string };
+  /**
+   * Told about every request: the S3 command and, for uploads, the bytes sent.
+   * For measuring (M1-15's load test); nothing else depends on it.
+   */
+  readonly observe?: (command: string, bytes: number) => void;
 }
 
 export class S3ObjectError extends Error {}
 
 export function createS3Client(config: S3StoreConfig): S3Client {
-  return new S3Client({
+  const client = new S3Client({
     region: config.region ?? 'us-east-1',
     ...(config.endpoint === undefined ? {} : { endpoint: config.endpoint, forcePathStyle: true }),
     ...(config.credentials === undefined ? {} : { credentials: config.credentials }),
   });
+  const observe = config.observe;
+  if (observe !== undefined) {
+    client.middlewareStack.add(
+      (next, context) => (args) => {
+        const body = (args.input as { Body?: unknown }).Body;
+        observe(context.commandName ?? 'unknown', body instanceof Uint8Array ? body.byteLength : 0);
+        return next(args);
+      },
+      { step: 'initialize', name: 'aiaObserve' },
+    );
+  }
+  return client;
 }
 
 function isNotFound(error: unknown): boolean {
@@ -107,5 +126,15 @@ export async function exists(client: S3Client, bucket: string, key: string): Pro
   } catch (error) {
     if (isNotFound(error)) return false;
     throw error;
+  }
+}
+
+/** Create the bucket if it does not exist (local stand-ins and load tests; staging creates buckets in CDK). */
+export async function ensureBucket(client: S3Client, bucket: string): Promise<void> {
+  try {
+    await client.send(new HeadBucketCommand({ Bucket: bucket }));
+  } catch (error) {
+    if (!isNotFound(error)) throw error;
+    await client.send(new CreateBucketCommand({ Bucket: bucket }));
   }
 }

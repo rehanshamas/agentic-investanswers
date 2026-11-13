@@ -64,6 +64,14 @@ describe.skipIf(!available)('S3CookedBarStore against MinIO', () => {
     store = new S3CookedBarStore(config);
   });
 
+  it('keeps a watermark per instrument: none until set, then the newest set (M1-15)', async () => {
+    expect(await store.getWatermark(symbol)).toBeUndefined();
+    await store.setWatermark(symbol, barTimeFromUtcParts(2026, 11, 10));
+    await store.setWatermark(symbol, barTimeFromUtcParts(2026, 11, 11));
+    expect(await store.getWatermark(symbol)).toBe(barTimeFromUtcParts(2026, 11, 11));
+    expect(await store.getWatermark(`${symbol}X`)).toBeUndefined();
+  });
+
   it('round-trips bars exactly', async () => {
     const start = barTimeFromUtcParts(2024, 3, 15);
     const bars = [bar(start, '100.00'), bar((start + 3600) as BarTime, '101.50')];

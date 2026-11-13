@@ -12,6 +12,7 @@
 import { accessFromEnv } from '@aia/access';
 import { RawMinuteSource, S3RawBarStore, feedsFor, liveProviderOf, loadFeedPlan, rawProviderOf } from '@aia/hydration';
 import {
+  CookedReader,
   HistoryQuery,
   LiveGateway,
   PARITY_INSTRUMENTS,
@@ -20,7 +21,7 @@ import {
   RedisRecentBarsCache,
   S3CookedBarStore,
 } from '@aia/market-data';
-import { barTime, barTimeFromUtcParts, parseDateKey } from '@aia/shared-kernel';
+import { barTime, barTimeFromUtcParts, nyseCalendar, parseDateKey } from '@aia/shared-kernel';
 
 import { buildServer } from './server.js';
 
@@ -53,8 +54,10 @@ async function main(): Promise<void> {
     return barTimeFromUtcParts(year, month, day);
   };
   const instruments = PARITY_INSTRUMENTS.filter((i) => plan.instruments.some((f) => f.symbol === i.symbol));
+  // Settled cooked bars plus the rest rolled up from raw (M1-15).
+  const reader = new CookedReader({ store: cooked, watermarks: cooked, minutes, instruments, calendar: nyseCalendar(), nowMs: () => Date.now() });
   const history = new HistoryQuery({
-    recentBars: new RecentBars({ cache, store: cooked, minutes }),
+    recentBars: new RecentBars({ cache, store: reader, minutes }),
     instruments,
     earliest,
   });

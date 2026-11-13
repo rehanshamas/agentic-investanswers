@@ -1,12 +1,15 @@
 // The cooked store on S3 (MinIO locally): one Parquet file per instrument,
-// timeframe and partition, overwritten whenever that partition is re-cooked.
+// timeframe and partition, overwritten whenever that partition is re-cooked,
+// and one small JSON watermark per instrument (M1-15).
 
 import type { S3Client } from '@aws-sdk/client-s3';
 
 import type { Bar, BarTime, Timeframe } from '@aia/shared-kernel';
+import { barTime } from '@aia/shared-kernel';
 
 import type { CookedBarStorePort } from '../application/cooked-bar-store-port.js';
 import { CookedStoreError } from '../application/cooked-bar-store-port.js';
+import type { CookedWatermarkPort } from '../application/cooked-watermark-port.js';
 import {
   partitionOf,
   partitionsBetween,
@@ -14,20 +17,30 @@ import {
 } from '../domain/cooked-partition.js';
 import { decodeBars, encodeBars } from './parquet-bars.js';
 import type { S3StoreConfig } from './s3-objects.js';
-import { createS3Client, get, put } from './s3-objects.js';
+import { createS3Client, ensureBucket, get, put } from './s3-objects.js';
 
 /** `cooked/<symbol>/<token>/<partition>.parquet`, with the lower-case token. */
 export function cookedKey(symbol: string, timeframe: Timeframe, partition: string): string {
   return `cooked/${symbol}/${storageToken(timeframe)}/${partition}.parquet`;
 }
 
-export class S3CookedBarStore implements CookedBarStorePort {
+/** Where an instrument's cooked watermark is kept (M1-15). */
+export function cookedWatermarkKey(symbol: string): string {
+  return `watermarks/${symbol}.json`;
+}
+
+export class S3CookedBarStore implements CookedBarStorePort, CookedWatermarkPort {
   private readonly client: S3Client;
   private readonly bucket: string;
 
   constructor(config: S3StoreConfig, client?: S3Client) {
     this.client = client ?? createS3Client(config);
     this.bucket = config.bucket;
+  }
+
+  /** Create the bucket if it does not exist. */
+  ensureBucket(): Promise<void> {
+    return ensureBucket(this.client, this.bucket);
   }
 
   async put(symbol: string, timeframe: Timeframe, bars: readonly Bar[]): Promise<void> {
@@ -83,5 +96,17 @@ export class S3CookedBarStore implements CookedBarStorePort {
       }
     }
     return bars;
+  }
+
+  async getWatermark(symbol: string): Promise<BarTime | undefined> {
+    const bytes = await get(this.client, this.bucket, cookedWatermarkKey(symbol));
+    if (bytes === undefined) return undefined;
+    const { through } = JSON.parse(Buffer.from(bytes).toString('utf8')) as { through?: unknown };
+    if (typeof through !== 'number') throw new CookedStoreError(`malformed watermark for ${symbol}`);
+    return barTime(through);
+  }
+
+  async setWatermark(symbol: string, through: BarTime): Promise<void> {
+    await put(this.client, this.bucket, cookedWatermarkKey(symbol), Buffer.from(JSON.stringify({ through })));
   }
 }

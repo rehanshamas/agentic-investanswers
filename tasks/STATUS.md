@@ -25,7 +25,7 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M1-12 | Extend the market calendar to 1999-2027 | done | #53 | #70 |
 | M1-13 | Commit parity fixtures, turn on the CI parity job | blocked | #58 |  |
 | M1-14 | Split parity: exact build parity, reported source fidelity | done | #67 | #68 |
-| M1-15 | M1 scale-out: no bottleneck or dead end in the live data path | todo | #81 |  |
+| M1-15 | M1 scale-out: no bottleneck or dead end in the live data path | in progress (15a in review) | #81 | #87 |
 | M1-16 | Data layer boundary: one data-access interface for the rest of the app | todo | #82 |  |
 | M2-01 | CDK staging stack | todo | #18 |  |
 | M2-02 | Cache layer | done | #19 | #77 |
