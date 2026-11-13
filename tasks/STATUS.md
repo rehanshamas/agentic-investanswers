@@ -40,7 +40,7 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M2-11 | Embed in the InvestAnswers site (iframe or web component), domain-locked | todo | #28 |  |
 | M2-12 | Themes (light and dark) and mobile layout | todo | #29 |  |
 | M2-13 | Saved chart preferences in DynamoDB (last symbol, timeframe, theme) | todo | #30 |  |
-| M3-01 | IndicatorDefinition interface | todo | #31 |  |
+| M3-01 | IndicatorDefinition interface | in review | #31 | #85 |
 | M3-02 | Settings schema → settings dialog (generated from the declared inputs, with range limits) | todo | #32 |  |
 | M3-03 | Indicator parity harness | todo | #33 |  |
 | M3-04 | Indicator engine | todo | #34 |  |
