@@ -40,3 +40,20 @@ export { checkSettings, settingsKey } from './domain/settings.js';
 
 export type { DialogField, NumberField, SelectField, SettingsDialog, SwitchField } from './domain/settings-dialog.js';
 export { settingsDialog } from './domain/settings-dialog.js';
+
+export { RUN_WINDOW_BARS, runStart } from './domain/run-window.js';
+
+export type { ClosedBarsQuery, IndicatorBarSourcePort } from './application/indicator-bar-source-port.js';
+export type { IndicatorOutputCachePort } from './application/indicator-output-cache-port.js';
+export type { EngineStats, IndicatorEngineDeps, IndicatorRequest, IndicatorResult } from './application/indicator-engine.js';
+export {
+  ENGINE_CACHE_TTL_SECONDS,
+  ENGINE_MAX_POINTS,
+  IndicatorEngine,
+  IndicatorRegistry,
+  IndicatorRegistryError,
+} from './application/indicator-engine.js';
+
+export { MemoryIndicatorOutputCache } from './adapters/memory-indicator-output-cache.js';
+export type { RedisIndicatorCacheOptions } from './adapters/redis-indicator-output-cache.js';
+export { IndicatorOutputCacheError, RedisIndicatorOutputCache } from './adapters/redis-indicator-output-cache.js';

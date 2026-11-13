@@ -55,6 +55,12 @@ The client must be able to change the source of any feed at any time with no har
 - **Neutral schemas.** Raw and cooked Parquet hold only `time, open, high, low, close, volume` as INT64 scaled whole numbers. Instrument precision belongs to the instrument, not the provider.
 - **Proved by tests.** Every adapter passes the same port contract tests, using recorded provider data. A switch test moves an instrument to a second (fake) provider mid-history and checks the reader and a full re-cook give the expected bars, with no code change.
 
+## Indicator engine (M3-01, M3-04)
+- **One shape for every indicator** (`contexts/indicators`): declared inputs with limits, declared outputs (lines, bands, markers, levels), and `step(state, bar)` that returns a new state and leaves the old one unchanged. ATR later is one new definition (decision record F-02).
+- **Runs on the server, cached in Redis** by indicator + version + instrument + timeframe + run start + settings. An entry holds the state after the last closed bar, that bar, and the newest 2,000 drawn points. A new closed bar is one step; the forming bar is previewed from the closed state and never cached; a changed last bar (a re-cook) means recompute.
+- **Run start pinned to a grid** of 5,000-bar blocks, starting one block before the newest bar's block, so a run covers 5,000 to 10,000 bars and a run rebuilt after a cache miss draws exactly the same values.
+- **Only drawn points leave:** declared outputs rounded to the instrument's tick. Indicator state stays in the cache, which only the engine reads.
+
 ## Security
 - Indicator source lives only in `agentic-investanswers-indicators`. Only drawn outputs at display precision leave the engine.
 - Every request carries a principal (human or agent); plan checks run on every REST route and WebSocket subscription.
