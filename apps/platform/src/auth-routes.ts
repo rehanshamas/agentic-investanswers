@@ -13,6 +13,9 @@
 import type { SignIn, SignUpError } from '@aia/access';
 import type { FastifyInstance } from 'fastify';
 
+import type { Limits } from './rate-limit.js';
+import { refusedForRate } from './rate-limit.js';
+
 const error = (code: string, message: string) => ({ error: { code, message } });
 
 const SIGN_UP_STATUS: Readonly<Record<SignUpError, number>> = {
@@ -32,8 +35,10 @@ const BAD_BODY = error('bad_request', 'send JSON with "email" and "password"');
 /** Small bodies only: an email and a password. */
 const bodyLimit = 4_096;
 
-export function mountAuthRoutes(app: FastifyInstance, signIn: SignIn): void {
+/** Sign-up and sign-in attempts are limited per client address (M2-10), when limits are given. */
+export function mountAuthRoutes(app: FastifyInstance, signIn: SignIn, limits?: Limits): void {
   app.post('/auth/sign-up', { bodyLimit }, async (request, reply) => {
+    if (limits !== undefined && (await refusedForRate(reply, await limits.check('signUp', request.ip)))) return reply;
     const fields = emailAndPassword(request.body);
     if (fields === undefined) return reply.code(400).send(BAD_BODY);
     const result = await signIn.signUp(fields.email, fields.password);
@@ -42,6 +47,7 @@ export function mountAuthRoutes(app: FastifyInstance, signIn: SignIn): void {
   });
 
   app.post('/auth/sign-in', { bodyLimit }, async (request, reply) => {
+    if (limits !== undefined && (await refusedForRate(reply, await limits.check('signIn', request.ip)))) return reply;
     const fields = emailAndPassword(request.body);
     if (fields === undefined) return reply.code(400).send(BAD_BODY);
     const result = await signIn.signIn(fields.email, fields.password);

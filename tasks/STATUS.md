@@ -36,7 +36,7 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M2-07 | Freshness checker | todo | #24 |  |
 | M2-08 | The app's own sign-up and sign-in (InvestAnswers sign-in later) | done | #25 | #92 |
 | M2-09 | Plan-based access on placeholder plans | done | #26 | #95 |
-| M2-10 | Safeguards | todo | #27 |  |
+| M2-10 | Safeguards | in review | #27 |  |
 | M2-11 | Embed in the InvestAnswers site (iframe or web component), domain-locked | todo | #28 |  |
 | M2-12 | Themes (light and dark) and mobile layout | todo | #29 |  |
 | M2-13 | Saved chart preferences in DynamoDB (last symbol, timeframe, theme) | todo | #30 |  |
