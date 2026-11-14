@@ -43,7 +43,12 @@ export function mountMcpRoute(app: FastifyInstance, queries: ReadQueries, princi
   app.post('/mcp', { bodyLimit: 65_536 }, async (request, reply) => {
     const principal = await principals.resolve({ authorization: request.headers.authorization });
     if (principal === undefined) return reply.code(401).send(error('unauthorized', 'send an agent key as Authorization: Bearer <key>'));
-    // One request counts as one read, as on the REST routes.
+    // One request is one message, so it counts as one read, as on the REST
+    // routes. JSON-RPC batches (dropped from MCP in 2025-06) would let one
+    // request carry many tool calls for the price of one, so they are refused.
+    if (Array.isArray(request.body)) {
+      return reply.code(400).send(error('batch_not_supported', 'send one JSON-RPC message per request'));
+    }
     if (limits !== undefined && (await refusedForRate(reply, await limits.checkReads(principal)))) return reply;
 
     const server = createMcpServer(readsFor(queries, principal));

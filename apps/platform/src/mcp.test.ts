@@ -140,6 +140,18 @@ describe('MCP tools', () => {
     expect((await app!.inject({ method: 'GET', url: '/mcp' })).statusCode).toBe(405);
   });
 
+  it('refuses a JSON-RPC batch, so one request cannot carry many tool calls for one read', async () => {
+    const { key } = await start({ readsPerMinute: 1 });
+    const call = (id: number) => ({ jsonrpc: '2.0', id, method: 'tools/call', params: { name: 'get_plan', arguments: {} } });
+    const res = await app!.inject({
+      method: 'POST',
+      url: '/mcp',
+      headers: { authorization: `Bearer ${key}`, accept: 'application/json, text/event-stream' },
+      payload: [call(1), call(2)],
+    });
+    expect([res.statusCode, res.json().error.code]).toEqual([400, 'batch_not_supported']);
+  });
+
   it('counts each MCP request against the agent’s read limit', async () => {
     const { port, key } = await start({ readsPerMinute: 3 });
     const client = await connect(port, key); // initialize and its notification: 2 requests
