@@ -26,12 +26,12 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M1-13 | Commit parity fixtures, turn on the CI parity job | blocked | #58 |  |
 | M1-14 | Split parity: exact build parity, reported source fidelity | done | #67 | #68 |
 | M1-15 | M1 scale-out: no bottleneck or dead end in the live data path | done | #81 | #87, #90, #94 |
-| M1-16 | Data layer boundary: one data-access interface for the rest of the app | in review | #82 | #102 |
+| M1-16 | Data layer boundary: one data-access interface for the rest of the app | done | #82 | #102 |
 | M2-01 | CDK staging stack | todo | #18 |  |
 | M2-02 | Cache layer | done | #19 | #77 |
 | M2-03 | History API | done | #20 | #79 |
 | M2-04 | Live gateway | done | #21 | #80 |
-| M2-05 | Chart app | in review | #22 | #103 |
+| M2-05 | Chart app | done | #22 | #103 |
 | M2-06 | Scroll-back paging, smooth loading of older history | todo | #23 |  |
 | M2-07 | Freshness checker | todo | #24 |  |
 | M2-08 | The app's own sign-up and sign-in (InvestAnswers sign-in later) | done | #25 | #92 |
@@ -41,7 +41,7 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M2-12 | Themes (light and dark) and mobile layout | todo | #29 |  |
 | M2-13 | Saved chart preferences in DynamoDB (last symbol, timeframe, theme) | todo | #30 |  |
 | M3-01 | IndicatorDefinition interface | done | #31 | #85 |
-| M3-02 | Settings schema → settings dialog (generated from the declared inputs, with range limits); part 1 done, part 2 (the dialog) waits on M2-05 | blocked | #32 | #86 |
+| M3-02 | Settings schema → settings dialog (generated from the declared inputs, with range limits); part 1 done, part 2 (the dialog) next | todo | #32 | #86 |
 | M3-03 | Indicator parity harness | todo | #33 |  |
 | M3-04 | Indicator engine | done | #34 | #89 |
 | M3-05 | The MVP indicator (SMA) end to end (chart, dialog, output types) | todo | #35 |  |
@@ -51,7 +51,7 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M3-07c | ATR port, slice 3: backtest | Phase 1 | #39 |  |
 | M3-08 | Leak test: no internals in API, WebSocket or the browser bundle | todo | #40 |  |
 | M4-01 | Agent identity | done | #41 | #97 |
-| M4-02 | Read-only MCP tools | in review (indicator tool waits on M3-05) | #42 | #101 |
+| M4-02 | Read-only MCP tools | done | #42 | #101 |
 | M4-03 | Read-only agent API endpoints | todo | #43 |  |
 | M4-04 | Usage and audit records for every human and agent request | todo | #44 |  |
 | M4-05 | Freshness and speed dashboard (CloudWatch) against agreed targets | todo | #45 |  |
