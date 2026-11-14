@@ -4,7 +4,7 @@ What we decided to keep the MVP moving: fallbacks in effect, temporary choices t
 
 Each entry gives the date, what was decided and why, what it affects, and what replaces it or closes it. Entries are never deleted: when one closes, it moves to "Closed" with the outcome.
 
-Last updated: 2026-11-13.
+Last updated: 2026-11-14.
 
 ## Fallbacks in effect
 Where something we were waiting for has not arrived, so we use an agreed alternative.
@@ -53,6 +53,11 @@ Choices made to keep progress going, each built so it can be swapped later witho
 - **Why:** usage limits per customer are not agreed yet, and the web application firewall (WAF) is an AWS service that comes with staging (F-01, M2-01).
 - **Affects:** each signed-in user may make 300 chart requests a minute and each agent key 120 (bars, plan and live connections; live updates on an open connection are not counted). Per client address: 10 sign-in attempts per 15 minutes and 5 new accounts an hour. Per account: 20 agent keys created or revoked an hour. Over a limit, the request is refused with "too many requests" and when to retry. A single request returns at most 1,000 bars. If the limit counter (Redis) is down, requests are let through rather than refused.
 - **Swap later:** the numbers are configuration (`config/safeguards.json`), changed without code. The WAF rules (basic managed rule sets and a per-address request ceiling in front of the platform) are added in the AWS stack (M2-01).
+
+**T-07 · The chart has no sign-in screen while everything runs locally** (2026-11-14, M2-05)
+- **Why:** everything runs locally until AWS access arrives (F-01). Sham decided on 2026-11-14 that the chart uses local developer access until then, and that the email and password screens are built when the app moves to AWS.
+- **Affects:** locally, the chart is run against the platform in developer access mode, where every request has access to everything. The chart already sends a session token with every request when it has one, so it works unchanged once a sign-in screen gives it one. The sign-in itself (T-01) is in place on the server.
+- **Closes when:** the move to AWS (M2-01) adds the sign-in screens, using the app's own sign-in (T-01) or InvestAnswers' (OI-21).
 
 ## Postponed decisions
 Open questions, what we assume meanwhile, and the latest date the answer is useful.
