@@ -117,6 +117,11 @@ Settled choices the client may ask about.
 - **Why:** Sham decided the MVP uses a simple indicator such as a moving average, so the MVP no longer waits on the ATR source.
 - **Design requirement (kept):** the indicator interface and engine take ATR later as one new indicator, with no change to the engine, the API or the chart.
 
+**D-12 · Agents read through MCP, the standard way AI assistants connect to tools** (2026-11-13, M4-02)
+- **What:** an agent connects to the platform's MCP endpoint with its read-only agent key (F-04) and gets three tools: list the instruments, get bars, and see its plan. Indicator outputs join as a fourth tool when the chart serves them (M3-05). Built with the official MCP software kit (`@modelcontextprotocol/sdk`), approved by Sham on 2026-11-13.
+- **Why:** the brief asks for agents to read the same data as the chart, with the same plan checks; MCP is what assistants such as Claude use to call tools.
+- **Same rules as the chart:** every tool answers exactly what the API answers, through the same plan checks and rate limits; agents can only read.
+
 ## Closed
 **F-02 · Simple moving average stands in for the ATR indicator** (2026-11-13) · closed 2026-11-13
 - **Was:** a fallback: the indicator milestone ran on a simple moving average until the ATR source and exports (OI-23) arrived, with the same design requirement as D-11.
