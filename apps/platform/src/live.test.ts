@@ -5,8 +5,9 @@ import { request as httpRequest } from 'node:http';
 
 import type { AccessPolicyPort, PrincipalResolverPort } from '@aia/access';
 import { accessFromEnv } from '@aia/access';
-import type { LiveServerMessage } from '@aia/market-data';
-import { BTCUSD, ETHUSD, HistoryQuery, LiveAnnouncer, LiveGateway, MemoryLiveBarsBus, MemoryRecentBarsCache, RecentBars } from '@aia/market-data';
+import { BTCUSD, ETHUSD, MemoryDataLayer } from '@aia/data';
+import type { LiveServerMessage } from '@aia/serving';
+import { HistoryQuery, LiveGateway } from '@aia/serving';
 import { barTime, price, volume } from '@aia/shared-kernel';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -21,7 +22,6 @@ const REFUSE_ALL: AccessPolicyPort = {
 };
 
 const T0 = 1_762_800_000;
-const empty = { getRange: () => Promise.resolve([]), read: () => Promise.resolve([]) };
 
 let app: FastifyInstance | undefined;
 let gateway: LiveGateway | undefined;
@@ -33,21 +33,17 @@ afterEach(async () => {
 
 async function start(options: { principals?: PrincipalResolverPort; allow?: boolean; pingMs?: number } = {}) {
   const dev = accessFromEnv({ AIA_DEV_AUTH: '1' });
-  const history = new HistoryQuery({
-    recentBars: new RecentBars({ cache: new MemoryRecentBarsCache(), store: empty, minutes: empty }),
-    instruments: [BTCUSD, ETHUSD],
-    earliest: () => barTime(T0),
-  });
+  const data = new MemoryDataLayer({ instruments: [BTCUSD, ETHUSD], earliest: barTime(T0) });
+  const history = new HistoryQuery({ data });
   gateway = new LiveGateway({
-    instruments: [BTCUSD, ETHUSD],
+    data,
     every: (ms, run) => {
       const timer = setInterval(run, ms);
       return () => clearInterval(timer);
     },
     options: { batchMs: 20 },
   });
-  const bus = new MemoryLiveBarsBus();
-  await bus.subscribe(gateway);
+  await data.subscribe(gateway);
   app = await buildServer({
     history,
     access: {
@@ -61,7 +57,7 @@ async function start(options: { principals?: PrincipalResolverPort; allow?: bool
   await app.listen({ port: 0, host: '127.0.0.1' });
   const address = app.server.address();
   const port = typeof address === 'object' && address !== null ? address.port : 0;
-  return { port, announcer: new LiveAnnouncer(bus, 'test') };
+  return { port, announcer: data.announcer('test') };
 }
 
 /** A connected client that collects every message. */

@@ -1,11 +1,12 @@
 // The platform's HTTP server (M2-03): routes mapped onto the contexts' use
-// cases. No business rules here: parameters, the cap and what is served are
-// HistoryQuery's (@aia/market-data); who is asking and what they may see are
-// the access context's; who follows what live is LiveGateway's (M2-04).
+// cases. No business rules here: parameters and the cap are HistoryQuery's
+// and who follows what live is LiveGateway's (@aia/serving, over the data
+// layer @aia/data, M1-16); who is asking and what they may see are the access
+// context's.
 //
 //   GET /health
 //   GET /bars?instrument=BTCUSD&tf=5m&limit=500&before=1762800000
-//   GET /live   upgraded to a WebSocket; the protocol is in @aia/market-data (live-protocol.ts)
+//   GET /live   upgraded to a WebSocket; the protocol is in @aia/serving (live-protocol.ts)
 //   GET /plan   what the caller's plan includes, and where to upgrade (M2-09)
 //   /auth/*     the app's own sign-in (M2-08), when configured; see auth-routes.ts
 //
@@ -16,8 +17,8 @@
 import compress from '@fastify/compress';
 import websocket from '@fastify/websocket';
 import type { Access, Principal } from '@aia/access';
-import type { HistoryErrorCode, HistoryQuery, LiveGateway } from '@aia/market-data';
-import { LIVE_MAX_CLIENT_MESSAGE } from '@aia/market-data';
+import type { HistoryErrorCode, HistoryQuery, LiveGateway } from '@aia/serving';
+import { LIVE_MAX_CLIENT_MESSAGE } from '@aia/serving';
 import type { BarTime } from '@aia/shared-kernel';
 import Fastify from 'fastify';
 import type { FastifyInstance, FastifyLoggerOptions, FastifyRequest } from 'fastify';

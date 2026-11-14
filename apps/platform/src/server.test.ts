@@ -5,8 +5,9 @@
 
 import type { AccessPolicyPort } from '@aia/access';
 import { accessFromEnv } from '@aia/access';
-import type { CookedBarStorePort, OneMinuteBarSourcePort } from '@aia/market-data';
-import { BTCUSD, ETHUSD, HistoryQuery, MemoryRecentBarsCache, NVDA, RecentBars } from '@aia/market-data';
+import type { CookedBarsSource, MinuteBarsSource } from '@aia/data';
+import { BTCUSD, ETHUSD, MemoryDataLayer, NVDA } from '@aia/data';
+import { HistoryQuery } from '@aia/serving';
 import type { Bar, BarTime, Timeframe } from '@aia/shared-kernel';
 import { barTime, parseScaled, price, volume } from '@aia/shared-kernel';
 import type { FastifyInstance } from 'fastify';
@@ -39,7 +40,7 @@ function fiveMinuteBars(count: number): Bar[] {
   });
 }
 
-class MemoryStore implements Pick<CookedBarStorePort, 'getRange'>, OneMinuteBarSourcePort {
+class MemoryStore implements CookedBarsSource, MinuteBarsSource {
   reads = 0;
   failing = false;
   constructor(private readonly bars: Bar[]) {}
@@ -62,9 +63,7 @@ afterEach(async () => {
 async function server(options: { bars?: Bar[]; devAuth?: boolean; allow?: boolean } = {}) {
   const store = new MemoryStore(options.bars ?? fiveMinuteBars(1_201));
   const history = new HistoryQuery({
-    recentBars: new RecentBars({ cache: new MemoryRecentBarsCache(), store, minutes: store }),
-    instruments: [BTCUSD, ETHUSD, NVDA],
-    earliest: () => EARLIEST,
+    data: new MemoryDataLayer({ instruments: [BTCUSD, ETHUSD, NVDA], cooked: store, minutes: store, earliest: EARLIEST }),
   });
   const access = accessFromEnv(options.devAuth === false ? {} : { AIA_DEV_AUTH: '1' });
   const policy = options.allow === false ? REFUSE_ALL : access.policy;

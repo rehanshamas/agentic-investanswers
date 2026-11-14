@@ -91,34 +91,14 @@ export type { RedisCacheOptions } from './adapters/redis-recent-bars-cache.js';
 export { RedisRecentBarsCache } from './adapters/redis-recent-bars-cache.js';
 
 export { whyNotServed } from './domain/served.js';
-export type {
-  HistoryBar,
-  HistoryError,
-  HistoryErrorCode,
-  HistoryQueryDeps,
-  HistoryRequest,
-  HistoryResponse,
-} from './application/history-query.js';
-export { HISTORY_DEFAULT_LIMIT, HISTORY_MAX_LIMIT, HistoryQuery } from './application/history-query.js';
 
-// The live gateway (M2-04).
-export type { DisplayBar } from './domain/display-bar.js';
-export { displayBar } from './domain/display-bar.js';
+// Live bar updates (M2-04). The gateway that fans them out to browsers is @aia/serving's (M1-16).
 export type { LiveBarUpdate, LiveBatch } from './domain/live-update.js';
 export { storedUpdates } from './domain/live-update.js';
 export { FormingBars } from './domain/forming-bars.js';
 export type { LiveBarsBusPort, LiveBarsListener } from './application/live-bars-bus-port.js';
 export { LiveBarsBusError } from './application/live-bars-bus-port.js';
 export { LiveAnnouncer } from './application/live-announcer.js';
-export type {
-  LiveClientMessage,
-  LiveErrorCode,
-  LiveServerMessage,
-  LiveWireUpdate,
-} from './application/live-protocol.js';
-export { LIVE_MAX_CLIENT_MESSAGE, parseClientMessage } from './application/live-protocol.js';
-export type { Authorize, LiveGatewayDeps, LiveGatewayOptions, LiveSocket } from './application/live-gateway.js';
-export { LIVE_CLOSE_TOO_SLOW, LiveGateway, LiveSession } from './application/live-gateway.js';
 export { MemoryLiveBarsBus } from './adapters/memory-live-bars-bus.js';
 export type { RedisLiveBarsBusOptions } from './adapters/redis-live-bars-bus.js';
 export { LIVE_BARS_CHANNEL, RedisLiveBarsBus } from './adapters/redis-live-bars-bus.js';

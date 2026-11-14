@@ -50,12 +50,12 @@ importers:
       '@aia/access':
         specifier: workspace:*
         version: link:../../contexts/access
-      '@aia/hydration':
+      '@aia/data':
         specifier: workspace:*
-        version: link:../../contexts/hydration
-      '@aia/market-data':
+        version: link:../../contexts/data
+      '@aia/serving':
         specifier: workspace:*
-        version: link:../../contexts/market-data
+        version: link:../../contexts/serving
       '@aia/shared-kernel':
         specifier: workspace:*
         version: link:../../shared-kernel
@@ -102,6 +102,18 @@ importers:
         specifier: workspace:*
         version: link:../../shared-kernel
 
+  contexts/data:
+    dependencies:
+      '@aia/hydration':
+        specifier: workspace:*
+        version: link:../hydration
+      '@aia/market-data':
+        specifier: workspace:*
+        version: link:../market-data
+      '@aia/shared-kernel':
+        specifier: workspace:*
+        version: link:../../shared-kernel
+
   contexts/hydration:
     dependencies:
       '@aia/shared-kernel':
@@ -140,6 +152,15 @@ importers:
 
   contexts/preferences:
     dependencies:
+      '@aia/shared-kernel':
+        specifier: workspace:*
+        version: link:../../shared-kernel
+
+  contexts/serving:
+    dependencies:
+      '@aia/data':
+        specifier: workspace:*
+        version: link:../data
       '@aia/shared-kernel':
         specifier: workspace:*
         version: link:../../shared-kernel
