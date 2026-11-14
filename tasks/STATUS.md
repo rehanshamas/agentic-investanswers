@@ -41,7 +41,7 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M2-12 | Themes (light and dark) and mobile layout | todo | #29 |  |
 | M2-13 | Saved chart preferences in DynamoDB (last symbol, timeframe, theme) | todo | #30 |  |
 | M3-01 | IndicatorDefinition interface | done | #31 | #85 |
-| M3-02 | Settings schema → settings dialog (generated from the declared inputs, with range limits); part 1 done, part 2 (the dialog) in progress | in progress | #32 | #86 |
+| M3-02 | Settings schema → settings dialog (generated from the declared inputs, with range limits) | in review | #32 | #86 |
 | M3-03 | Indicator parity harness | todo | #33 |  |
 | M3-04 | Indicator engine | done | #34 | #89 |
 | M3-05 | The MVP indicator (SMA) end to end (chart, dialog, output types) | todo | #35 |  |
