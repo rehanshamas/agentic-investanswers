@@ -1,6 +1,14 @@
 // Public entry of the access context. Other packages import only from here.
 
 export type { Principal, PrincipalKind } from './domain/principal.js';
+export { mayWrite } from './domain/principal.js';
+export type { AgentKey, AgentKeyView, AgentScope } from './domain/agent-key.js';
+export { AGENT_KEY_PREFIX, MAX_AGENT_KEYS, isAgentKey } from './domain/agent-key.js';
+export type { AgentKeyStorePort } from './application/agent-key-store-port.js';
+export type { AgentKeysDeps, CreateAgentKeyResult } from './application/agent-keys.js';
+export { AgentKeys, AnyOfResolver } from './application/agent-keys.js';
+export { MemoryAgentKeyStore } from './adapters/memory-agent-key-store.js';
+export { DynamoAgentKeyStore } from './adapters/dynamodb-agent-key-store.js';
 export type { PrincipalResolverPort, RequestCredentials } from './application/principal-resolver-port.js';
 export type { AccessPolicyPort, Entitlements } from './application/access-policy-port.js';
 export type { Includes, Plan, PlanBook } from './domain/plans.js';
@@ -29,3 +37,12 @@ export { MemoryAccountStore, MemorySessionStore } from './adapters/memory-sign-i
 export { NodeCryptoTokens, ScryptPasswordHasher } from './adapters/node-crypto-sign-in.js';
 export type { DynamoConfig } from './adapters/dynamodb-sign-in-stores.js';
 export { DynamoAccountStore, DynamoSessionStore, dynamoClient, ensureUsersTable } from './adapters/dynamodb-sign-in-stores.js';
+
+export type { RateBucket, RateLimits, RateRule } from './domain/safeguards.js';
+export { RATE_BUCKETS, SafeguardsConfigError, parseRateLimits, windowOf } from './domain/safeguards.js';
+export type { RateCounterPort, RateDecision, RateLimiterDeps } from './application/rate-limiter.js';
+export { RateLimiter } from './application/rate-limiter.js';
+export { MemoryRateCounter } from './adapters/memory-rate-counter.js';
+export type { RedisRateCounterOptions } from './adapters/redis-rate-counter.js';
+export { RedisRateCounter } from './adapters/redis-rate-counter.js';
+export { loadRateLimits } from './adapters/safeguards-file.js';

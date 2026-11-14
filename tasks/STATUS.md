@@ -1,6 +1,6 @@
 # Task status
 
-Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) and by you when you merge. Statuses: todo, in progress, in review, done, blocked.
+Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) and by you when you merge. Statuses: todo, in progress, in review, done, blocked, Phase 1 (not in the MVP).
 
 | ID | Task | Status | Issue | PR |
 |---|---|---|---|---|
@@ -36,7 +36,7 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M2-07 | Freshness checker | todo | #24 |  |
 | M2-08 | The app's own sign-up and sign-in (InvestAnswers sign-in later) | done | #25 | #92 |
 | M2-09 | Plan-based access on placeholder plans | done | #26 | #95 |
-| M2-10 | Safeguards | todo | #27 |  |
+| M2-10 | Safeguards | done | #27 | #99 |
 | M2-11 | Embed in the InvestAnswers site (iframe or web component), domain-locked | todo | #28 |  |
 | M2-12 | Themes (light and dark) and mobile layout | todo | #29 |  |
 | M2-13 | Saved chart preferences in DynamoDB (last symbol, timeframe, theme) | todo | #30 |  |
@@ -44,14 +44,14 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M3-02 | Settings schema → settings dialog (generated from the declared inputs, with range limits); part 1 done, part 2 (the dialog) waits on M2-05 | blocked | #32 | #86 |
 | M3-03 | Indicator parity harness | todo | #33 |  |
 | M3-04 | Indicator engine | done | #34 | #89 |
-| M3-05 | Demo indicator end to end (chart, dialog, output types) | todo | #35 |  |
-| M3-06 | Backtest engine (shared): trades, profit, ROI, win rate, totals | in review | #36 | #91 |
-| M3-07a | ATR port, slice 1: plotted values (agentic-investanswers-indicators) | todo | #37 |  |
-| M3-07b | ATR port, slice 2: signals | todo | #38 |  |
-| M3-07c | ATR port, slice 3: backtest | todo | #39 |  |
+| M3-05 | The MVP indicator (SMA) end to end (chart, dialog, output types) | todo | #35 |  |
+| M3-06 | Backtest engine (shared): trades, profit, ROI, win rate, totals | done, parity pending (OI-30) | #36 | #91 |
+| M3-07a | ATR port, slice 1: plotted values (agentic-investanswers-indicators) | Phase 1 | #37 |  |
+| M3-07b | ATR port, slice 2: signals | Phase 1 | #38 |  |
+| M3-07c | ATR port, slice 3: backtest | Phase 1 | #39 |  |
 | M3-08 | Leak test: no internals in API, WebSocket or the browser bundle | todo | #40 |  |
-| M4-01 | Agent identity | todo | #41 |  |
-| M4-02 | Read-only MCP tools | todo | #42 |  |
+| M4-01 | Agent identity | done | #41 | #97 |
+| M4-02 | Read-only MCP tools | in progress (side thread) | #42 |  |
 | M4-03 | Read-only agent API endpoints | todo | #43 |  |
 | M4-04 | Usage and audit records for every human and agent request | todo | #44 |  |
 | M4-05 | Freshness and speed dashboard (CloudWatch) against agreed targets | todo | #45 |  |

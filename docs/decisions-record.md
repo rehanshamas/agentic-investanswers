@@ -14,21 +14,15 @@ Where something we were waiting for has not arrived, so we use an agreed alterna
 - **Affects:** everything runs and is tested on local stand-ins: MinIO for S3, Redis, DynamoDB Local. Demos run locally, including the client demo on 2026-11-13. Deployment (M2-01) waits.
 - **Closes when:** access arrives and the staging stack is deployed. Nothing built so far depends on running locally.
 
-**F-02 · Simple moving average stands in for the ATR indicator** (2026-11-13)
-- **Why:** the IA-ATR-Model 2.1 source and its TradingView exports (OI-23) have not arrived.
-- **Affects:** the indicator milestone (M3) is built and proven on a simple moving average.
-- **Design requirement:** the indicator interface and engine must take ATR later as one new indicator, with no change to the engine, the API or the chart.
-- **Closes when:** the ATR source arrives and its port (M3-07a to M3-07c) passes parity. If it is not in by Monday of Week 3, ATR moves to Phase 1, as agreed in the brief.
-
 **F-03 · Stocks are history only, with no live stream** (2026-11-10)
 - **Why:** the current Massive plan refuses WebSocket access, both real time and 15-minute delayed (OI-28).
 - **Affects:** NVDA and TSLA 1-minute history is stored; no live stock bars. Crypto live is unaffected.
 - **For now:** Sham decided on 2026-11-13 to stay on the free plan for the client demo that day, and to ask InvestAnswers afterwards whether to move to a paid plan.
 - **Closes when:** a Massive plan with WebSocket access is chosen, together with the delay promised to customers (OI-24). The live stream (M1-07b) is then built on the same interfaces crypto uses.
 
-**F-04 · Our own agent keys, if InvestAnswers sign-in cannot issue agent tokens** (planned)
-- **Why:** it is still open whether InvestAnswers sign-in can issue tokens for agents (OI-25, due 2026-11-23).
-- **Affects:** agent access (M4-01) would use our own scoped, read-only keys.
+**F-04 · Our own agent keys, until InvestAnswers sign-in can issue agent tokens** (2026-11-13)
+- **Why:** it is still open whether InvestAnswers sign-in can issue tokens for agents (OI-25, due 2026-11-23), and the app's own sign-in is in place meanwhile (T-01).
+- **Affects:** agent access (M4-01). A signed-in user creates a named agent key, shown once and stored only as a hash, and can revoke it at any time (up to 10 per account). The agent uses it like a sign-in token, reads on its user's plan, and is read-only: it cannot change the account, its keys or anything else.
 - **Closes when:** InvestAnswers confirms it can issue agent tokens, which then plug in behind the same interface.
 
 ## Temporary decisions
@@ -54,6 +48,11 @@ Choices made to keep progress going, each built so it can be swapped later witho
 - **Affects:** the rest of the app reaches bars only through one data-access interface; no other module touches storage, the cache or provider code directly (M1-16). For the MVP it runs in-process.
 - **Swap later:** running the data layer as its own service means one new adapter behind that interface; nothing else changes.
 - **In code since M1-16 (2026-11-14):** the interface is `@aia/data`. A lint rule refuses any other way in, and the browser app cannot reach the data layer at all. Client-facing rules (the History API, the live gateway) moved to their own module, so the data layer holds data only. The separate-service design is in `docs/architecture.md`.
+
+**T-06 · Starter rate limits, and edge (WAF) rules with the AWS stack** (2026-11-13, M2-10)
+- **Why:** usage limits per customer are not agreed yet, and the web application firewall (WAF) is an AWS service that comes with staging (F-01, M2-01).
+- **Affects:** each signed-in user may make 300 chart requests a minute and each agent key 120 (bars, plan and live connections; live updates on an open connection are not counted). Per client address: 10 sign-in attempts per 15 minutes and 5 new accounts an hour. Per account: 20 agent keys created or revoked an hour. Over a limit, the request is refused with "too many requests" and when to retry. A single request returns at most 1,000 bars. If the limit counter (Redis) is down, requests are let through rather than refused.
+- **Swap later:** the numbers are configuration (`config/safeguards.json`), changed without code. The WAF rules (basic managed rule sets and a per-address request ceiling in front of the platform) are added in the AWS stack (M2-01).
 
 ## Postponed decisions
 Open questions, what we assume meanwhile, and the latest date the answer is useful.
@@ -114,7 +113,16 @@ Settled choices the client may ask about.
 - **What:** the process that streams live prices can run as several copies, each handling its own share of instruments, assigned automatically or pinned in the feed configuration. Adding copies is how hydration grows with the number of instruments.
 - **Why:** the client's concern is no bottleneck or dead end in the data layer. One process streaming everything was a hard limit; now each instrument has exactly one writer however many processes run, and charts are unaffected (tested with 1,000 browsers and two publishers).
 
+**D-11 · The MVP indicator is the simple moving average; ATR is Phase 1** (2026-11-13, Sham)
+- **What:** the MVP's indicator milestone (M3) is built and proven on a simple moving average and its demo strategy: plotted on the chart, with its settings dialog and backtest, at 100% parity against its own TradingView exports (OI-30). The IA-ATR-Model 2.1 port (M3-07a to M3-07c) moves to Phase 1.
+- **Why:** Sham decided the MVP uses a simple indicator such as a moving average, so the MVP no longer waits on the ATR source.
+- **Design requirement (kept):** the indicator interface and engine take ATR later as one new indicator, with no change to the engine, the API or the chart.
+
 ## Closed
+**F-02 · Simple moving average stands in for the ATR indicator** (2026-11-13) · closed 2026-11-13
+- **Was:** a fallback: the indicator milestone ran on a simple moving average until the ATR source and exports (OI-23) arrived, with the same design requirement as D-11.
+- **Outcome:** no longer a fallback. Sham decided the same day that the simple moving average is the MVP indicator and ATR is Phase 1 (D-11).
+
 **T-03 · Local developer access mode** (2026-11-11) · closed 2026-11-13 (M2-08)
 - **Was:** with `AIA_DEV_AUTH=1` every request counted as a local user with full access; without it, every request was refused.
 - **Outcome:** the app's own sign-in (T-01) is in place, so without `AIA_DEV_AUTH=1` the platform now requires a signed-in user. The mode stays for local development only, never in staging.

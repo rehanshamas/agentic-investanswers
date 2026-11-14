@@ -4,15 +4,20 @@
 //   everything. Never outside a developer's machine.
 // - Otherwise: the app's own sign-in (M2-08). A request is recognised only
 //   with a live session token from sign-up or sign-in, and sees what its
-//   placeholder plan includes (M2-09, T-02; config/plans.json).
+//   placeholder plan includes (M2-09, T-02; config/plans.json). A user's
+//   read-only agent key is recognised too, as an agent on that user's plan
+//   (M4-01, F-04).
 
 import type { AccessPolicyPort, Entitlements } from '../application/access-policy-port.js';
+import type { AgentKeyStorePort } from '../application/agent-key-store-port.js';
+import { AgentKeys, AnyOfResolver } from '../application/agent-keys.js';
 import { PlanPolicy } from '../application/plan-policy.js';
 import type { PrincipalResolverPort } from '../application/principal-resolver-port.js';
 import type { AccountStorePort, SessionStorePort } from '../application/sign-in-ports.js';
 import { SignIn } from '../application/sign-in.js';
 import type { PlanBook } from '../domain/plans.js';
 import type { Principal } from '../domain/principal.js';
+import { MemoryAgentKeyStore } from './memory-agent-key-store.js';
 import { MemoryAccountStore, MemorySessionStore } from './memory-sign-in-stores.js';
 import { NodeCryptoTokens, ScryptPasswordHasher } from './node-crypto-sign-in.js';
 import { loadPlanBook } from './plan-file.js';
@@ -48,6 +53,8 @@ export interface Access {
   readonly policy: AccessPolicyPort;
   /** Sign-up, sign-in and sign-out; absent in dev access mode, where nobody signs in. */
   readonly signIn?: SignIn;
+  /** Users' read-only agent keys (M4-01); absent in dev access mode. */
+  readonly agentKeys?: AgentKeys;
   /** Said once at start-up, so nobody runs with dev access by accident. */
   readonly description: string;
 }
@@ -57,6 +64,8 @@ type Env = Readonly<Record<string, string | undefined>>;
 export interface SignInStores {
   readonly accounts: AccountStorePort;
   readonly sessions: SessionStorePort;
+  /** Kept in memory when left out. */
+  readonly agentKeys?: AgentKeyStorePort;
 }
 
 /** The app's own sign-in over the given stores, with scrypt passwords and random session tokens. */
@@ -79,10 +88,16 @@ export function accessFromEnv(env: Env, stores?: SignInStores, plans?: PlanBook)
   }
   const chosen = stores ?? { accounts: new MemoryAccountStore(), sessions: new MemorySessionStore() };
   const signIn = ownSignIn(chosen);
+  const agentKeys = new AgentKeys({
+    store: chosen.agentKeys ?? new MemoryAgentKeyStore(),
+    tokens: new NodeCryptoTokens(),
+    now: () => Date.now(),
+  });
   return {
-    principals: signIn,
+    principals: new AnyOfResolver(agentKeys, signIn),
     policy: new PlanPolicy(plans ?? loadPlanBook(env), chosen.accounts),
     signIn,
+    agentKeys,
     description:
       stores === undefined
         ? "The app's own sign-in, with accounts kept in memory: they are lost on restart. Set AIA_DEV_AUTH=1 to skip sign-in locally."
