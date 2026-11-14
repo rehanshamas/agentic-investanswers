@@ -53,6 +53,7 @@ Choices made to keep progress going, each built so it can be swapped later witho
 - **Why:** the client wants the data layer (provider data, hydration, stored bars) isolatable from the rest of the app, without dead ends.
 - **Affects:** the rest of the app reaches bars only through one data-access interface; no other module touches storage, the cache or provider code directly (M1-16). For the MVP it runs in-process.
 - **Swap later:** running the data layer as its own service means one new adapter behind that interface; nothing else changes.
+- **In code since M1-16 (2026-11-14):** the interface is `@aia/data`. A lint rule refuses any other way in, and the browser app cannot reach the data layer at all. Client-facing rules (the History API, the live gateway) moved to their own module, so the data layer holds data only. The separate-service design is in `docs/architecture.md`.
 
 ## Postponed decisions
 Open questions, what we assume meanwhile, and the latest date the answer is useful.

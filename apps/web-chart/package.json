@@ -12,5 +12,5 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {},
-  "nx": { "tags": ["type:app"] }
+  "nx": { "tags": ["type:app", "layer:product", "runtime:browser"] }
 }

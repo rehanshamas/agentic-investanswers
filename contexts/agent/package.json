@@ -12,5 +12,5 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": { "@aia/shared-kernel": "workspace:*" },
-  "nx": { "tags": ["type:context"] }
+  "nx": { "tags": ["type:context", "layer:product"] }
 }

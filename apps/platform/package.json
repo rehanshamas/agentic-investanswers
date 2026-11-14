@@ -24,7 +24,8 @@
   },
   "nx": {
     "tags": [
-      "type:app"
+      "type:app",
+      "layer:product"
     ]
   },
   "devDependencies": {
