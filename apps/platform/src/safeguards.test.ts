@@ -3,7 +3,8 @@
 // real ones.
 
 import { MemoryAccountStore, MemorySessionStore, MemoryRateCounter, RateLimiter, accessFromEnv, parseRateLimits } from '@aia/access';
-import { BTCUSD, ETHUSD, HistoryQuery, LiveGateway, MemoryRecentBarsCache, RecentBars } from '@aia/market-data';
+import { BTCUSD, ETHUSD, MemoryDataLayer } from '@aia/data';
+import { HistoryQuery, LiveGateway } from '@aia/serving';
 import { barTime } from '@aia/shared-kernel';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -12,7 +13,6 @@ import { buildServer } from './server.js';
 
 const T0 = 1_762_800_000;
 const NOW_MS = 1_763_000_080_000; // 40 s into a minute, 880 s into a 900 s or 3600 s window
-const empty = { getRange: () => Promise.resolve([]), read: () => Promise.resolve([]) };
 const PASSWORD = 'correct horse battery';
 
 const LIMITS = parseRateLimits({
@@ -34,12 +34,9 @@ afterEach(async () => {
 });
 
 async function start() {
-  const history = new HistoryQuery({
-    recentBars: new RecentBars({ cache: new MemoryRecentBarsCache(), store: empty, minutes: empty }),
-    instruments: [BTCUSD, ETHUSD],
-    earliest: () => barTime(T0),
-  });
-  gateway = new LiveGateway({ instruments: [BTCUSD, ETHUSD], every: () => () => undefined });
+  const data = new MemoryDataLayer({ instruments: [BTCUSD, ETHUSD], earliest: barTime(T0) });
+  const history = new HistoryQuery({ data });
+  gateway = new LiveGateway({ data, every: () => () => undefined });
   const access = accessFromEnv({}, { accounts: new MemoryAccountStore(), sessions: new MemorySessionStore() });
   const limits = new RateLimiter({ limits: LIMITS, counter: new MemoryRateCounter(() => NOW_MS), now: () => NOW_MS });
   app = await buildServer({ history, access, live: gateway, limits, now: () => barTime(T0) });

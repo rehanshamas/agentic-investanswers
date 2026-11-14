@@ -9,7 +9,8 @@ import { join } from 'node:path';
 import { MemoryRateCounter, RateLimiter, accessFromEnv, parseRateLimits } from '@aia/access';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { BTCUSD, ETHUSD, HistoryQuery, MemoryRecentBarsCache, NVDA, RecentBars } from '@aia/market-data';
+import { BTCUSD, ETHUSD, MemoryDataLayer, NVDA } from '@aia/data';
+import { HistoryQuery } from '@aia/serving';
 import { barTime } from '@aia/shared-kernel';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -17,7 +18,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { buildServer } from './server.js';
 
 const T0 = 1_762_800_000;
-const empty = { getRange: () => Promise.resolve([]), read: () => Promise.resolve([]) };
 const PASSWORD = 'correct horse battery';
 
 const dir = mkdtempSync(join(tmpdir(), 'aia-mcp-'));
@@ -44,11 +44,8 @@ afterEach(async () => {
 });
 
 async function start(options: { readsPerMinute?: number } = {}) {
-  const history = new HistoryQuery({
-    recentBars: new RecentBars({ cache: new MemoryRecentBarsCache(), store: empty, minutes: empty }),
-    instruments: [BTCUSD, ETHUSD, NVDA],
-    earliest: () => barTime(T0),
-  });
+  const data = new MemoryDataLayer({ instruments: [BTCUSD, ETHUSD, NVDA], earliest: barTime(T0) });
+  const history = new HistoryQuery({ data });
   const rule = { limit: options.readsPerMinute ?? 1_000, windowSeconds: 60 };
   const limits = new RateLimiter({
     limits: parseRateLimits({ rateLimits: { humanReads: rule, agentReads: rule, signIn: rule, signUp: rule, agentKeyChanges: rule } }),
@@ -58,7 +55,7 @@ async function start(options: { readsPerMinute?: number } = {}) {
   app = await buildServer({
     history,
     access: accessFromEnv({ AIA_PLANS: PLANS }),
-    instruments: [BTCUSD, ETHUSD, NVDA],
+    catalog: data,
     limits,
     now: () => barTime(T0),
   });

@@ -2,24 +2,27 @@ import type { Bar, BarTime, Instrument, Timeframe } from '@aia/shared-kernel';
 import { barTime, parseScaled, price, volume } from '@aia/shared-kernel';
 import { describe, expect, it } from 'vitest';
 
-import { BTCUSD, NVDA } from '../domain/parity-instruments.js';
+import type { BarsPage, PageQuery } from '@aia/data';
+import { BTCUSD, MemoryDataLayer, NVDA } from '@aia/data';
+
 import { HISTORY_DEFAULT_LIMIT, HISTORY_MAX_LIMIT, HistoryQuery } from './history-query.js';
-import type { BarsPage, RecentBarsPageQuery } from './recent-bars.js';
 
 const T0 = barTime(1_762_800_000);
-const asked: Array<{ symbol: string; timeframe: Timeframe; query: RecentBarsPageQuery }> = [];
+const asked: Array<{ symbol: string; timeframe: Timeframe; query: PageQuery }> = [];
+// What is served comes from the data layer's own rules.
+const layer = new MemoryDataLayer({ instruments: [BTCUSD, NVDA] });
 
 function query(page: BarsPage = { bars: [], next: null }): HistoryQuery {
   asked.length = 0;
   return new HistoryQuery({
-    recentBars: {
-      page: (instrument: Instrument, timeframe: Timeframe, q: RecentBarsPageQuery) => {
+    data: {
+      instruments: [BTCUSD, NVDA],
+      whyNotServed: (instrument, timeframe) => layer.whyNotServed(instrument, timeframe),
+      page: (instrument: Instrument, timeframe: Timeframe, q: PageQuery) => {
         asked.push({ symbol: instrument.symbol, timeframe, query: q });
         return Promise.resolve(page);
       },
     },
-    instruments: [BTCUSD, NVDA],
-    earliest: () => barTime(1_730_419_200),
   });
 }
 
@@ -102,7 +105,8 @@ describe('HistoryQuery.run', () => {
     const q = query();
     await q.run({ instrument: BTCUSD, timeframe: '1h', limit: 7, before: T0 }, barTime(T0 + 1));
     expect(asked).toEqual([
-      { symbol: 'BTCUSD', timeframe: '1h', query: { limit: 7, before: T0, now: T0 + 1, earliest: 1_730_419_200 } },
+      // Where history starts is the data layer's to apply since M1-16 (covered by the DataAccess contract).
+      { symbol: 'BTCUSD', timeframe: '1h', query: { limit: 7, before: T0, now: T0 + 1 } },
     ]);
   });
 });

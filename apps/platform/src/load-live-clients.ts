@@ -7,8 +7,8 @@
 // they were made, and at the end that it holds the newest value of every bar
 // with nothing missing, for exactly the pairs it subscribed to.
 
-import type { LiveServerMessage } from '@aia/market-data';
-import { BTCUSD, ETHUSD } from '@aia/market-data';
+import { BTCUSD, ETHUSD } from '@aia/data';
+import type { LiveServerMessage } from '@aia/serving';
 import type { Timeframe } from '@aia/shared-kernel';
 
 export const LOAD_INSTRUMENTS = [BTCUSD, ETHUSD];

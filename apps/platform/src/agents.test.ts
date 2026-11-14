@@ -7,8 +7,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { AGENT_KEY_PREFIX, accessFromEnv } from '@aia/access';
-import type { LiveServerMessage } from '@aia/market-data';
-import { BTCUSD, ETHUSD, HistoryQuery, LiveGateway, MemoryRecentBarsCache, RecentBars } from '@aia/market-data';
+import type { LiveServerMessage } from '@aia/serving';
+import { BTCUSD, ETHUSD, MemoryDataLayer } from '@aia/data';
+import { HistoryQuery, LiveGateway } from '@aia/serving';
 import { barTime } from '@aia/shared-kernel';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -16,7 +17,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { buildServer } from './server.js';
 
 const T0 = 1_762_800_000;
-const empty = { getRange: () => Promise.resolve([]), read: () => Promise.resolve([]) };
 const PASSWORD = 'correct horse battery';
 
 const dir = mkdtempSync(join(tmpdir(), 'aia-agents-'));
@@ -43,12 +43,9 @@ afterEach(async () => {
 });
 
 async function start() {
-  const history = new HistoryQuery({
-    recentBars: new RecentBars({ cache: new MemoryRecentBarsCache(), store: empty, minutes: empty }),
-    instruments: [BTCUSD, ETHUSD],
-    earliest: () => barTime(T0),
-  });
-  gateway = new LiveGateway({ instruments: [BTCUSD, ETHUSD], every: () => () => undefined });
+  const data = new MemoryDataLayer({ instruments: [BTCUSD, ETHUSD], earliest: barTime(T0) });
+  const history = new HistoryQuery({ data });
+  gateway = new LiveGateway({ data, every: () => () => undefined });
   app = await buildServer({ history, access: accessFromEnv({ AIA_PLANS: PLANS }), live: gateway, now: () => barTime(T0) });
   await app.listen({ port: 0, host: '127.0.0.1' });
   const address = app.server.address();

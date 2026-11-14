@@ -1,7 +1,8 @@
 // The live gateway load test (M2-04 done-check): the real server, gateway and
 // bus, a fake publisher, and many WebSocket clients that check what arrives.
 //
-// The publisher drives the real FormingBars as `pnpm live` does, from made-up
+// The publisher drives the data layer's simulated live feed (the same forming
+// and stored bar rules as `pnpm live`, @aia/data), from made-up
 // minutes, `speed` times faster than real time: forming bars every tick
 // (250 ms / speed), a minute every 60 s / speed, and each minute's stored bars
 // announced one tick after it closes (the store-then-cook race, as live). Each
@@ -14,21 +15,11 @@
 import { fork } from 'node:child_process';
 
 import { accessFromEnv } from '@aia/access';
-import type { LiveBarUpdate, LiveBarsBusPort } from '@aia/market-data';
-import {
-  FormingBars,
-  HistoryQuery,
-  INTRADAY_ROLLUPS,
-  LiveAnnouncer,
-  LiveGateway,
-  MemoryLiveBarsBus,
-  MemoryRecentBarsCache,
-  RecentBars,
-  RedisLiveBarsBus,
-  rollUp,
-} from '@aia/market-data';
-import type { Bar, Instrument, Timeframe } from '@aia/shared-kernel';
-import { alignToTimeframe, barTime, price, volume } from '@aia/shared-kernel';
+import type { LiveBarUpdate } from '@aia/data';
+import { MemoryDataLayer, SimulatedLiveFeed } from '@aia/data';
+import { HistoryQuery, LiveGateway } from '@aia/serving';
+import type { Bar, Instrument } from '@aia/shared-kernel';
+import { barTime, price, volume } from '@aia/shared-kernel';
 
 import type { ClientsReport, PublishedSummary } from './load-live-clients.js';
 import { LATENCY_BUCKETS, LOAD_INSTRUMENTS, PRICE_BASE, runClients } from './load-live-clients.js';
@@ -62,20 +53,16 @@ class FakeInstrument {
   counter = 0;
   readonly publishedAt: number[] = [];
   readonly finals = new Map<string, Map<number, number>>();
-  private readonly stored: Bar[] = [];
-  private readonly forming: FormingBars;
+  private readonly feed: SimulatedLiveFeed;
   /** The minute forming: its index and first and newest counter. */
   private current = { minute: 0, open: 0, close: 0 };
   /** The minute that just closed, still being written. */
   private closing: Bar | undefined;
 
   constructor(readonly instrument: Instrument) {
-    this.forming = new FormingBars(instrument, INTRADAY_ROLLUPS);
+    this.feed = new SimulatedLiveFeed(instrument);
     // As `pnpm live` after its first minute: one minute already cooked, so every timeframe forms.
-    const seed: Bar = { ...this.bar({ minute: -1, open: 0, close: 0 }) };
-    this.stored.push(seed);
-    this.forming.stored(seed);
-    this.forming.cooked(seed, new Map(INTRADAY_ROLLUPS.map((tf) => [tf, rollUp(instrument, tf, [seed])])));
+    this.feed.stored(this.bar({ minute: -1, open: 0, close: 0 }));
   }
 
   /** One tick: what `pnpm live` would announce now, in order. */
@@ -90,21 +77,14 @@ class FakeInstrument {
     if (tickInMinute === 1 && this.closing !== undefined) {
       const minute = this.closing;
       this.closing = undefined;
-      this.forming.stored(minute);
-      this.stored.push(minute);
-      const rebuilt = new Map<Timeframe, Bar[]>();
-      for (const tf of INTRADAY_ROLLUPS) {
-        const period = alignToTimeframe(this.instrument, tf, minute.time);
-        rebuilt.set(tf, rollUp(this.instrument, tf, this.stored.filter((b) => alignToTimeframe(this.instrument, tf, b.time) === period)));
-      }
-      out.push(this.stamp(this.forming.cooked(minute, rebuilt), now));
+      out.push(this.stamp(this.feed.stored(minute), now));
     }
     // A trade.
     this.counter++;
     if (this.current.open === 0) this.current.open = this.counter;
     this.current.close = this.counter;
     const unstored = [...(this.closing === undefined ? [] : [this.closing]), this.bar(this.current)];
-    out.push(this.stamp(this.forming.unstoredChanged(unstored), now));
+    out.push(this.stamp(this.feed.unstoredChanged(unstored), now));
     return out;
   }
 
@@ -203,23 +183,19 @@ export async function runLoad(options: LoadOptions): Promise<LoadReport> {
   const speed = options.speed ?? 5;
   const tickMs = 250 / speed;
 
-  const bus: LiveBarsBusPort =
-    options.redis === undefined ? new MemoryLiveBarsBus() : await RedisLiveBarsBus.connect({ url: options.redis, channel: `load:live:${Date.now()}` });
+  const layer = { instruments: LOAD_INSTRUMENTS, earliest: barTime(T0) };
+  const data =
+    options.redis === undefined ? new MemoryDataLayer(layer) : await MemoryDataLayer.overRedis(layer, { url: options.redis, channel: `load:live:${Date.now()}` });
   const gateway = new LiveGateway({
-    instruments: LOAD_INSTRUMENTS,
+    data,
     every: (ms, run) => {
       const timer = setInterval(run, ms);
       return () => clearInterval(timer);
     },
   });
-  await bus.subscribe(gateway);
-  const empty = { getRange: () => Promise.resolve([]), read: () => Promise.resolve([]) };
+  await data.subscribe(gateway);
   const app = await buildServer({
-    history: new HistoryQuery({
-      recentBars: new RecentBars({ cache: new MemoryRecentBarsCache(), store: empty, minutes: empty }),
-      instruments: LOAD_INSTRUMENTS,
-      earliest: () => barTime(T0),
-    }),
+    history: new HistoryQuery({ data }),
     access: accessFromEnv({ AIA_DEV_AUTH: '1' }),
     live: gateway,
     now: () => barTime(T0),
@@ -243,7 +219,7 @@ export async function runLoad(options: LoadOptions): Promise<LoadReport> {
 
     // One publisher per instrument, as if each came from its own hydration shard (M1-15c):
     // their announcements interleave on the bus, and clients count any resync as a failure.
-    const announcers = new Map(LOAD_INSTRUMENTS.map((i) => [i.symbol, new LiveAnnouncer(bus, `load-${i.symbol}`)]));
+    const announcers = new Map(LOAD_INSTRUMENTS.map((i) => [i.symbol, data.announcer(`load-${i.symbol}`)]));
     const fakes = LOAD_INSTRUMENTS.map((i) => new FakeInstrument(i));
     let published = 0;
     let announcements = 0;
@@ -289,6 +265,6 @@ export async function runLoad(options: LoadOptions): Promise<LoadReport> {
   } finally {
     gateway.stop();
     await app.close();
-    await bus.close();
+    await data.close();
   }
 }

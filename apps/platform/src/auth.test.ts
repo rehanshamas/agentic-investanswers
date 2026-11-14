@@ -5,7 +5,8 @@ import { request as httpRequest } from 'node:http';
 import { PassThrough } from 'node:stream';
 
 import { AllowEverythingPolicy, MemoryAccountStore, MemorySessionStore, NodeCryptoTokens, ScryptPasswordHasher, SignIn } from '@aia/access';
-import { BTCUSD, ETHUSD, HistoryQuery, LiveGateway, MemoryRecentBarsCache, RecentBars } from '@aia/market-data';
+import { BTCUSD, ETHUSD, MemoryDataLayer } from '@aia/data';
+import { HistoryQuery, LiveGateway } from '@aia/serving';
 import { barTime } from '@aia/shared-kernel';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -13,7 +14,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { buildServer, redactUrl } from './server.js';
 
 const T0 = 1_762_800_000;
-const empty = { getRange: () => Promise.resolve([]), read: () => Promise.resolve([]) };
 const PASSWORD = 'correct horse battery';
 
 let app: FastifyInstance | undefined;
@@ -32,12 +32,9 @@ async function start(options: { listen?: boolean; logStream?: NodeJS.WritableStr
     tokens: new NodeCryptoTokens(),
     now: () => T0 * 1_000,
   });
-  const history = new HistoryQuery({
-    recentBars: new RecentBars({ cache: new MemoryRecentBarsCache(), store: empty, minutes: empty }),
-    instruments: [BTCUSD, ETHUSD],
-    earliest: () => barTime(T0),
-  });
-  gateway = new LiveGateway({ instruments: [BTCUSD, ETHUSD], every: () => () => undefined });
+  const data = new MemoryDataLayer({ instruments: [BTCUSD, ETHUSD], earliest: barTime(T0) });
+  const history = new HistoryQuery({ data });
+  gateway = new LiveGateway({ data, every: () => () => undefined });
   app = await buildServer({
     history,
     access: { principals: signIn, policy: new AllowEverythingPolicy(), signIn },

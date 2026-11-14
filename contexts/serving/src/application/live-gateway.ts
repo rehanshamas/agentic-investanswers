@@ -21,12 +21,10 @@
 //   (1013, try again later): the browser reconnects and resyncs, and the
 //   server never queues without bound for a slow client.
 
+import type { DataAccess, LiveBarsListener, LiveBatch } from '@aia/data';
 import type { Instrument, Timeframe } from '@aia/shared-kernel';
 
 import { displayBar } from '../domain/display-bar.js';
-import type { LiveBatch } from '../domain/live-update.js';
-import { whyNotServed } from '../domain/served.js';
-import type { LiveBarsListener } from './live-bars-bus-port.js';
 import type { LiveClientMessage, LiveServerMessage, LiveWireUpdate } from './live-protocol.js';
 import { parseClientMessage } from './live-protocol.js';
 
@@ -48,8 +46,8 @@ export interface LiveGatewayOptions {
 }
 
 export interface LiveGatewayDeps {
-  /** The instruments the platform knows. */
-  readonly instruments: readonly Instrument[];
+  /** The instruments, and what is served, from the data layer (M1-16). */
+  readonly data: Pick<DataAccess, 'instruments' | 'whyNotServed'>;
   /** Run `run` every `ms`; returns a cancel. Injected so tests drive time. */
   readonly every: (ms: number, run: () => void) => () => void;
   readonly options?: LiveGatewayOptions;
@@ -93,6 +91,7 @@ export class LiveGateway implements LiveBarsListener {
   private readonly sessions = new Set<LiveSession>();
   private readonly followers = new Map<string, Set<LiveSession>>();
   private readonly instruments: ReadonlyMap<string, Instrument>;
+  private readonly data: Pick<DataAccess, 'instruments' | 'whyNotServed'>;
   private readonly batchMs: number;
   private readonly maxSubscriptions: number;
   private readonly maxBufferedBytes: number;
@@ -105,7 +104,8 @@ export class LiveGateway implements LiveBarsListener {
   private readonly stored1m = new Map<string, number>();
 
   constructor(deps: LiveGatewayDeps) {
-    this.instruments = new Map(deps.instruments.map((i) => [i.symbol, i]));
+    this.data = deps.data;
+    this.instruments = new Map(deps.data.instruments.map((i) => [i.symbol, i]));
     this.batchMs = deps.options?.batchMs ?? 100;
     this.maxSubscriptions = deps.options?.maxSubscriptions ?? 20;
     this.maxBufferedBytes = deps.options?.maxBufferedBytes ?? 1 << 20;
@@ -226,7 +226,7 @@ export class LiveGateway implements LiveBarsListener {
       refuse('unknown_instrument', `unknown instrument "${symbol}"; known: ${[...this.instruments.keys()].join(', ')}`);
       return;
     }
-    const notServed = whyNotServed(instrument, tf);
+    const notServed = this.data.whyNotServed(instrument, tf);
     if (notServed !== undefined) {
       refuse('timeframe_not_served', notServed);
       return;

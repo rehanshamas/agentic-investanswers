@@ -17,6 +17,15 @@ export default [
             { sourceTag: "type:kernel", onlyDependOnLibsWithTags: [] },
             { sourceTag: "type:context", onlyDependOnLibsWithTags: ["type:kernel", "type:context"] },
             { sourceTag: "type:app", onlyDependOnLibsWithTags: ["type:kernel", "type:context"] },
+            // The data layer boundary (M1-16, decision record T-05): outside the data
+            // layer, bars come only through its front door, @aia/data (tagged
+            // layer:data), never straight from the stores, the cache, the bus or
+            // provider code (hydration and market-data, tagged layer:data-internal).
+            // An allow-list of direct dependencies, since @aia/data itself uses them.
+            { sourceTag: "layer:product", onlyDependOnLibsWithTags: ["type:kernel", "layer:product", "layer:data"] },
+            // Browser code never reaches the data layer at all: it would bundle
+            // storage and server code, and the browser gets bars over HTTP and WebSocket.
+            { sourceTag: "runtime:browser", notDependOnLibsWithTags: ["layer:data", "layer:data-internal"] },
           ],
         },
       ],

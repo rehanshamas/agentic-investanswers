@@ -1,17 +1,17 @@
 // The History API's rules (M2-03), free of any HTTP framework: which
-// parameters a request may carry, the cap, what is served, and the response
-// in display units. The platform app maps the outcomes to HTTP statuses and
-// runs the access check between `parse` and `run`.
+// parameters a request may carry, the cap, and the response in display units.
+// Bars and what is served come from the data layer (@aia/data, M1-16). The
+// platform app maps the outcomes to HTTP statuses and runs the access check
+// between `parse` and `run`.
 //
 //   GET /bars?instrument=BTCUSD&tf=5m&limit=500&before=1762800000
 
+import type { DataAccess } from '@aia/data';
 import type { BarTime, Instrument, Timeframe } from '@aia/shared-kernel';
 import { BarTimeError, barTime, isTimeframe } from '@aia/shared-kernel';
 
 import type { DisplayBar } from '../domain/display-bar.js';
 import { displayBar } from '../domain/display-bar.js';
-import { whyNotServed } from '../domain/served.js';
-import type { RecentBars } from './recent-bars.js';
 
 /** Most bars one request may ask for. */
 export const HISTORY_MAX_LIMIT = 1_000;
@@ -50,11 +50,7 @@ export interface HistoryResponse {
 }
 
 export interface HistoryQueryDeps {
-  readonly recentBars: Pick<RecentBars, 'page'>;
-  /** The instruments the platform knows. */
-  readonly instruments: readonly Instrument[];
-  /** Where an instrument's history starts. */
-  readonly earliest: (symbol: string) => BarTime;
+  readonly data: Pick<DataAccess, 'instruments' | 'whyNotServed' | 'page'>;
 }
 
 type Parsed = { readonly ok: true; readonly request: HistoryRequest } | { readonly ok: false; readonly error: HistoryError };
@@ -104,11 +100,11 @@ export class HistoryQuery {
       }
     }
 
-    const instrument = this.deps.instruments.find((i) => i.symbol === symbol);
+    const instrument = this.deps.data.instruments.find((i) => i.symbol === symbol);
     if (instrument === undefined) {
-      return fail('unknown_instrument', `unknown instrument "${symbol}"; known: ${this.deps.instruments.map((i) => i.symbol).join(', ')}`);
+      return fail('unknown_instrument', `unknown instrument "${symbol}"; known: ${this.deps.data.instruments.map((i) => i.symbol).join(', ')}`);
     }
-    const notServed = whyNotServed(instrument, tf);
+    const notServed = this.deps.data.whyNotServed(instrument, tf);
     if (notServed !== undefined) return fail('timeframe_not_served', notServed);
 
     return { ok: true, request: { instrument, timeframe: tf, limit, ...(before === undefined ? {} : { before }) } };
@@ -117,12 +113,7 @@ export class HistoryQuery {
   /** The page, cache first, in display units. */
   async run(request: HistoryRequest, now: BarTime): Promise<HistoryResponse> {
     const { instrument, timeframe, limit, before } = request;
-    const page = await this.deps.recentBars.page(instrument, timeframe, {
-      limit,
-      now,
-      earliest: this.deps.earliest(instrument.symbol),
-      ...(before === undefined ? {} : { before }),
-    });
+    const page = await this.deps.data.page(instrument, timeframe, { limit, now, ...(before === undefined ? {} : { before }) });
     return {
       instrument: instrument.symbol,
       timeframe,

@@ -1,11 +1,12 @@
 // The platform's HTTP server (M2-03): routes mapped onto the contexts' use
-// cases. No business rules here: parameters, the cap and what is served are
-// HistoryQuery's (@aia/market-data); who is asking and what they may see are
-// the access context's; who follows what live is LiveGateway's (M2-04).
+// cases. No business rules here: parameters and the cap are HistoryQuery's
+// and who follows what live is LiveGateway's (@aia/serving, over the data
+// layer @aia/data, M1-16); who is asking and what they may see are the access
+// context's.
 //
 //   GET /health
 //   GET /bars?instrument=BTCUSD&tf=5m&limit=500&before=1762800000
-//   GET /live   upgraded to a WebSocket; the protocol is in @aia/market-data (live-protocol.ts)
+//   GET /live   upgraded to a WebSocket; the protocol is in @aia/serving (live-protocol.ts)
 //   GET /plan   what the caller's plan includes, and where to upgrade (M2-09)
 //   POST /mcp   read-only MCP tools for agents (M4-02); see mcp-route.ts
 //   /auth/*     the app's own sign-in (M2-08) and agent keys (M4-01), when configured;
@@ -18,9 +19,10 @@
 import compress from '@fastify/compress';
 import websocket from '@fastify/websocket';
 import type { Access, Principal } from '@aia/access';
-import type { HistoryQuery, LiveGateway } from '@aia/market-data';
-import { LIVE_MAX_CLIENT_MESSAGE } from '@aia/market-data';
-import type { BarTime, Instrument } from '@aia/shared-kernel';
+import type { DataAccess } from '@aia/data';
+import type { HistoryQuery, LiveGateway } from '@aia/serving';
+import { LIVE_MAX_CLIENT_MESSAGE } from '@aia/serving';
+import type { BarTime } from '@aia/shared-kernel';
 import Fastify from 'fastify';
 import type { FastifyInstance, FastifyLoggerOptions, FastifyRequest } from 'fastify';
 
@@ -40,8 +42,8 @@ export interface ServerDeps {
   readonly live?: Pick<LiveGateway, 'open'>;
   /** How often idle WebSockets are pinged; one that missed the last ping is closed. Default 30 s. */
   readonly pingMs?: number;
-  /** The instruments served, for the MCP instrument listing (M4-02). */
-  readonly instruments?: readonly Instrument[];
+  /** The instruments and what is served, for the MCP instrument listing (M4-02): the data layer's. */
+  readonly catalog?: Pick<DataAccess, 'instruments' | 'whyNotServed'>;
   /** Per-user rate limits (M2-10); none when left out. */
   readonly limits?: Limits;
   /** Request logging; `{ stream }` sends it to a stream (tests). Session tokens are masked either way. */
@@ -92,7 +94,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   app.get('/health', () => ({ ok: true }));
 
   const limits = deps.limits;
-  const reads = new ReadQueries({ history: deps.history, policy: deps.access.policy, now: deps.now, instruments: deps.instruments });
+  const reads = new ReadQueries({ history: deps.history, policy: deps.access.policy, now: deps.now, catalog: deps.catalog });
   if (deps.access.signIn !== undefined) mountAuthRoutes(app, deps.access.signIn, limits);
   if (deps.access.agentKeys !== undefined) mountAgentKeyRoutes(app, deps.access.agentKeys, deps.access.principals, limits);
 

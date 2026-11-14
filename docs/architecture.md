@@ -35,15 +35,41 @@ Full specification: `analytics-platform-architecture` (project files). This page
 - **Recent-bars cache (M2-02).** Redis holds a window of the newest bars (up to 2,000) per instrument and timeframe, 1m included. A window means "every stored bar from `from` onwards", so a read inside it is a true hit. It is only ever created whole from the store, on a read miss. After `pnpm live` has stored and cooked a minute, it sends **BarClosed** events (the 1m bar, plus each 5m to 4h bar it rebuilt, which may still be forming) and the cache replaces or appends those bars. Updates to a key with no window are ignored. A fill is refused if a bar changed while the store was being read. Each change runs as one Lua script. If an update fails, the window is dropped. Commands that rewrite bars any other way (`pnpm cook`, `pnpm gaps`, `pnpm backfill`) drop the windows of the instruments they touched. The cache never runs ahead of the store, and a failure costs a store read rather than a stale chart. User, access, preferences and agent data in DynamoDB.
 - Locally: MinIO, DynamoDB Local and Redis via `docker compose`.
 
+## Data layer boundary (M1-16)
+- **One front door.** `@aia/data` (`contexts/data`) is the only way the rest of the app gets bars. Its `DataAccess` interface offers:
+  - instruments, and what is served
+  - history pages, newest first, never past where history starts
+  - bar ranges (for indicators, backtests and agents)
+  - live updates
+  - close
+
+  Bars stay in our scaled units.
+- **Behind it:**
+  - `hydration`: raw provider data, live streams, gap repair
+  - `market-data`: cooked bars, the cache, the bus, cooking
+
+  `openLocalDataLayer` composes them on S3 and Redis, and `MemoryDataLayer` composes the same pieces in memory for tests.
+- **Serving is separate.** `@aia/serving` holds what the platform promises its clients (the History API's rules, the live gateway and its wire protocol, display units), over `DataAccess`. The platform app maps them onto Fastify.
+- **Enforced by lint** (`eslint.config.mjs`, Nx tags):
+  - Projects tagged `layer:product` (the platform, the chart, and the access, indicators, backtesting, agent, audit, preferences and serving contexts) may depend only on the kernel, other product modules and `@aia/data`, never on `layer:data-internal` (hydration, market-data).
+  - The browser app (`runtime:browser`) may not reach the data layer at all, even indirectly.
+  - Only `apps/hydration` (`layer:data-app`), the data layer's own process, uses the internals directly.
+  - `contexts/data/src/boundary.test.ts` proves each rule refuses a bad import.
+- **The data layer as its own service, later** (design; gRPC stays deferred):
+  - A remote adapter of `DataAccess`: queries over HTTP to a data service running today's in-process composition, and live updates on the existing Redis bus (or a stream from the service).
+  - Service-to-service authentication: a workload identity or a signed token, never a user's.
+  - The adapter must pass the same contract tests (`data-access.contract.ts`).
+  - No caller changes: the platform, indicators, backtests and agents only ever see `DataAccess`.
+
 ## History API (M2-03)
 - `GET /bars?instrument=BTCUSD&tf=5m&limit=500&before=<UTC seconds>` on the platform process (Fastify, `pnpm platform`, port 8080). Response: `{ instrument, timeframe, bars: [{ time, open, high, low, close, volume }], next }`. Prices and volumes are decimals at the instrument's precision. `next` is the `before` for the next older page, or `null` at the start of history.
 - **Cap: 1,000 bars per request** (default 500). A larger `limit` gets `400 limit_too_large`, never a silent clamp. Errors are `{ error: { code, message } }`: `400 bad_parameter`, `401 unauthorized`, `403 forbidden`, `404 unknown_instrument`, `409 timeframe_not_served`, `500 internal`.
 - **Cache first, then S3.** The newest page comes from the recent-bars cache. Older pages, or a cold cache, read the cooked store (raw for 1m). A page widens its look-back across closed sessions or missing history, up to 64× the page, and stops at where the feed plan says the instrument's history starts. If Redis is down, reads go to the store.
-- The rules (parameters, cap, what is served) live in `HistoryQuery` (`@aia/market-data`). The app only maps outcomes to HTTP statuses. Until M1-08, only crypto at 1m to 4h is served.
+- The rules (parameters, cap, display units) live in `HistoryQuery` (`@aia/serving` since M1-16); what is served, and the bars, come from the data layer (`@aia/data`). The app only maps outcomes to HTTP statuses. Until M1-08, only crypto at 1m to 4h is served.
 - **Principal on every request.** The resolver and policy ports in `@aia/access` are checked first (401), and the policy after parsing (403). Until M2-08: with `AIA_DEV_AUTH=1`, every request is the local developer with full access; without it, everything gets 401.
 
 ## Live gateway (M2-04)
-- **One WebSocket per browser**, `GET /live` on the platform process, carrying all its subscriptions (`{ op: 'subscribe' | 'unsubscribe', instrument, tf }`, at most 20). The protocol is in `@aia/market-data` (`application/live-protocol.ts`). The principal is resolved before the upgrade (401 otherwise; browsers may pass `?token=` until M2-08 settles sign-in), and the plan is checked on every subscription (`forbidden`).
+- **One WebSocket per browser**, `GET /live` on the platform process, carrying all its subscriptions (`{ op: 'subscribe' | 'unsubscribe', instrument, tf }`, at most 20). The protocol and the gateway are in `@aia/serving` (`application/live-protocol.ts`, since M1-16). The principal is resolved before the upgrade (401 otherwise; browsers may pass `?token=` until M2-08 settles sign-in), and the plan is checked on every subscription (`forbidden`).
 - **Two kinds of update**, each replacing the bar with the same time:
   - **Stored:** a minute's BarClosed events. `pnpm live` announces them only after the store, cooking and the recent-bars cache have them, so a chart is never ahead of `GET /bars`.
   - **Forming** (`forming: true`): the chart ticks with trades.

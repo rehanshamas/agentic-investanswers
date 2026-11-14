@@ -20,7 +20,8 @@
   },
   "nx": {
     "tags": [
-      "type:context"
+      "type:context",
+      "layer:data-internal"
     ]
   }
 }

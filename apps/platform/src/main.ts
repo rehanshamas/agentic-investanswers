@@ -1,8 +1,8 @@
 // `pnpm platform`: run the platform process locally (M2-03).
 //
-// Wires the stores (MinIO locally), the recent-bars cache (Redis) and the
-// feed plan into the History API, and the live bars bus (the same Redis) into
-// the live gateway (M2-04), and listens. Settings, all optional:
+// Opens the data layer (@aia/data, M1-16: stores on MinIO locally, the cache
+// and live bus on Redis, the feed plan), puts the History API and the live
+// gateway (@aia/serving) over it, and listens. Settings, all optional:
 //   AIA_PORT (8080), AIA_HOST (127.0.0.1), AIA_REDIS_URL, AIA_S3_* and
 //   AIA_*_BUCKET as for the hydration commands, AIA_FEED_PLAN,
 //   AIA_DEV_AUTH=1 to treat every request as the local developer; otherwise the
@@ -23,18 +23,9 @@ import {
   ensureUsersTable,
   loadRateLimits,
 } from '@aia/access';
-import { RawMinuteSource, S3RawBarStore, feedsFor, liveProviderOf, loadFeedPlan, rawProviderOf } from '@aia/hydration';
-import {
-  CookedReader,
-  HistoryQuery,
-  LiveGateway,
-  PARITY_INSTRUMENTS,
-  RecentBars,
-  RedisLiveBarsBus,
-  RedisRecentBarsCache,
-  S3CookedBarStore,
-} from '@aia/market-data';
-import { barTime, barTimeFromUtcParts, nyseCalendar, parseDateKey } from '@aia/shared-kernel';
+import { openLocalDataLayer } from '@aia/data';
+import { HistoryQuery, LiveGateway } from '@aia/serving';
+import { barTime } from '@aia/shared-kernel';
 
 import { buildServer } from './server.js';
 
@@ -54,54 +45,19 @@ async function usersStores(env: NodeJS.ProcessEnv) {
 
 async function main(): Promise<void> {
   const env = process.env;
-  const plan = loadFeedPlan(env);
-
-  const s3 = {
-    endpoint: env['AIA_S3_ENDPOINT'] ?? 'http://127.0.0.1:9000',
-    region: env['AIA_S3_REGION'] ?? 'us-east-1',
-    // The local MinIO's credentials from docker-compose.yml, unless overridden.
-    credentials: {
-      accessKeyId: env['AIA_S3_ACCESS_KEY'] ?? 'minio',
-      secretAccessKey: env['AIA_S3_SECRET_KEY'] ?? 'minio12345',
-    },
-  };
-  const raw = new S3RawBarStore({ ...s3, bucket: env['AIA_RAW_BUCKET'] ?? 'aia-raw' });
-  const cooked = new S3CookedBarStore({ ...s3, bucket: env['AIA_COOKED_BUCKET'] ?? 'aia-cooked' });
-  const minutes = new RawMinuteSource(raw, rawProviderOf(plan), liveProviderOf(plan));
-
-  const cache = await RedisRecentBarsCache.connect({
-    url: env['AIA_REDIS_URL'],
-    reconnect: 'forever',
-    onError: (failure) => console.error(`redis: ${failure.message} (reads go to the store meanwhile)`),
+  const data = await openLocalDataLayer(env, {
+    onError: (what, failure) => console.error(`redis (${what}): ${failure.message} (reads go to the store meanwhile; charts resync once it is back)`),
   });
-
-  // Where each instrument's history starts: the feed plan's default start day.
-  const earliest = (symbol: string) => {
-    const { year, month, day } = parseDateKey(feedsFor(plan, symbol).defaultFrom);
-    return barTimeFromUtcParts(year, month, day);
-  };
-  const instruments = PARITY_INSTRUMENTS.filter((i) => plan.instruments.some((f) => f.symbol === i.symbol));
-  // Settled cooked bars plus the rest rolled up from raw (M1-15).
-  const reader = new CookedReader({ store: cooked, watermarks: cooked, minutes, instruments, calendar: nyseCalendar(), nowMs: () => Date.now() });
-  const history = new HistoryQuery({
-    recentBars: new RecentBars({ cache, store: reader, minutes }),
-    instruments,
-    earliest,
-  });
-
-  // One subscriber per process; the gateway fans out to every browser.
+  const history = new HistoryQuery({ data });
+  // One subscription per process; the gateway fans out to every browser.
   const live = new LiveGateway({
-    instruments,
+    data,
     every: (ms, run) => {
       const timer = setInterval(run, ms);
       return () => clearInterval(timer);
     },
   });
-  const bus = await RedisLiveBarsBus.connect({
-    url: env['AIA_REDIS_URL'],
-    onError: (failure) => console.error(`redis (live bus): ${failure.message} (charts resync once it is back)`),
-  });
-  await bus.subscribe(live);
+  await data.subscribe(live);
 
   const access = env['AIA_DEV_AUTH'] === '1' ? accessFromEnv(env) : accessFromEnv(env, await usersStores(env));
   console.log(access.description);
@@ -117,7 +73,7 @@ async function main(): Promise<void> {
     now: () => Date.now(),
     onError: (failure) => console.error(`rate limits: ${failure.message} (request let through)`),
   });
-  const app = await buildServer({ history, access, live, limits, instruments, now: () => barTime(Math.floor(Date.now() / 1000)), logger: true });
+  const app = await buildServer({ history, access, live, limits, catalog: data, now: () => barTime(Math.floor(Date.now() / 1000)), logger: true });
 
   const port = Number(env['AIA_PORT'] ?? 8080);
   const host = env['AIA_HOST'] ?? '127.0.0.1';
@@ -127,8 +83,7 @@ async function main(): Promise<void> {
     live.stop();
     void app
       .close()
-      .then(() => bus.close())
-      .then(() => cache.close())
+      .then(() => data.close())
       .then(() => counter.close())
       .then(() => process.exit(0));
   };

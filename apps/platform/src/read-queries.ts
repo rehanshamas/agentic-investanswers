@@ -1,11 +1,11 @@
 // The reads the platform serves, shared by the REST routes and the MCP tools
 // (M4-02), so an agent gets exactly what the API gives: the History API's
-// parameters, cap and pages (@aia/market-data), and the plan check (@aia/access).
-// No rules of its own.
+// parameters, cap and pages (@aia/serving), what is served (the data layer,
+// @aia/data), and the plan check (@aia/access). No rules of its own.
 
 import type { Access, Entitlements, Principal } from '@aia/access';
-import type { HistoryErrorCode, HistoryQuery, HistoryResponse } from '@aia/market-data';
-import { whyNotServed } from '@aia/market-data';
+import type { DataAccess } from '@aia/data';
+import type { HistoryErrorCode, HistoryQuery, HistoryResponse } from '@aia/serving';
 import type { BarTime, Instrument, Timeframe } from '@aia/shared-kernel';
 import { TIMEFRAMES } from '@aia/shared-kernel';
 
@@ -30,8 +30,8 @@ export interface ReadQueriesDeps {
   readonly history: Pick<HistoryQuery, 'parse' | 'run'>;
   readonly policy: Access['policy'];
   readonly now: () => BarTime;
-  /** The instruments the platform serves, for listings. */
-  readonly instruments?: readonly Instrument[] | undefined;
+  /** The instruments and what is served, for listings: the data layer's. */
+  readonly catalog?: Pick<DataAccess, 'instruments' | 'whyNotServed'> | undefined;
 }
 
 const HISTORY_STATUS: Readonly<Record<HistoryErrorCode, number>> = {
@@ -72,8 +72,9 @@ export class ReadQueries {
   /** Every instrument, the timeframes served for it, and which the caller's plan includes. */
   async instruments(principal: Principal): Promise<ReadOutcome<readonly InstrumentListing[]>> {
     const listings: InstrumentListing[] = [];
-    for (const instrument of this.deps.instruments ?? []) {
-      const timeframes = TIMEFRAMES.filter((tf) => whyNotServed(instrument, tf) === undefined);
+    const catalog = this.deps.catalog;
+    for (const instrument of catalog?.instruments ?? []) {
+      const timeframes = TIMEFRAMES.filter((tf) => catalog?.whyNotServed(instrument, tf) === undefined);
       const included: Timeframe[] = [];
       for (const tf of timeframes) if (await this.deps.policy.canReadBars(principal, instrument.symbol, tf)) included.push(tf);
       listings.push({ symbol: instrument.symbol, kind: instrument.kind, timeframes, included });

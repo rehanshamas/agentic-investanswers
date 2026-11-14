@@ -2,10 +2,9 @@ import type { Bar, Instrument, Timeframe } from '@aia/shared-kernel';
 import { barTime, price, volume } from '@aia/shared-kernel';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { MemoryLiveBarsBus } from '../adapters/memory-live-bars-bus.js';
-import { BTCUSD, ETHUSD, NVDA } from '../domain/parity-instruments.js';
-import type { LiveBarUpdate } from '../domain/live-update.js';
-import { LiveAnnouncer } from './live-announcer.js';
+import type { Announcer, LiveBarUpdate } from '@aia/data';
+import { BTCUSD, ETHUSD, MemoryDataLayer, NVDA } from '@aia/data';
+
 import type { LiveSocket } from './live-gateway.js';
 import { LIVE_CLOSE_TOO_SLOW, LiveGateway } from './live-gateway.js';
 import type { LiveServerMessage } from './live-protocol.js';
@@ -46,20 +45,20 @@ class FakeSocket implements LiveSocket {
 
 let flush: () => void = () => {};
 let gateway: LiveGateway;
-let announcer: LiveAnnouncer;
+let announcer: Announcer;
 
 function setup(options = {}, instruments: readonly Instrument[] = [BTCUSD, ETHUSD, NVDA]) {
+  const data = new MemoryDataLayer({ instruments });
   gateway = new LiveGateway({
-    instruments,
+    data,
     every: (_ms, run) => {
       flush = run;
       return () => (flush = () => {});
     },
     options,
   });
-  const bus = new MemoryLiveBarsBus();
-  void bus.subscribe(gateway);
-  announcer = new LiveAnnouncer(bus, 'test-run');
+  void data.subscribe(gateway);
+  announcer = data.announcer('test-run');
 }
 
 async function connect(allow: (symbol: string, tf: Timeframe) => boolean = () => true) {

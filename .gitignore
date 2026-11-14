@@ -6,7 +6,7 @@ coverage/
 .env.*
 !.env.example
 .claude/settings.local.json
-data/
+/data/
 *.log
 .DS_Store
 
