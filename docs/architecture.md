@@ -49,7 +49,7 @@ Full specification: `analytics-platform-architecture` (project files). This page
   - `market-data`: cooked bars, the cache, the bus, cooking
 
   `openLocalDataLayer` composes them on S3 and Redis, and `MemoryDataLayer` composes the same pieces in memory for tests.
-- **Serving is separate.** `@aia/serving` holds what the platform promises its clients (the History API's rules, the live gateway and its wire protocol, display units), over `DataAccess`. The platform app maps them onto Fastify.
+- **Serving is separate.** `@aia/serving` holds what the platform promises its clients (the History API's rules, the live gateway, display units), over `DataAccess`. The platform app maps them onto Fastify. The shapes clients see (responses, errors, the instrument listing, the live wire protocol) are in `@aia/client-contract` (M2-05), which depends only on the kernel, so the browser shares them without reaching serving.
 - **Enforced by lint** (`eslint.config.mjs`, Nx tags):
   - Projects tagged `layer:product` (the platform, the chart, and the access, indicators, backtesting, agent, audit, preferences and serving contexts) may depend only on the kernel, other product modules and `@aia/data`, never on `layer:data-internal` (hydration, market-data).
   - The browser app (`runtime:browser`) may not reach the data layer at all, even indirectly.
@@ -81,6 +81,16 @@ Full specification: `analytics-platform-architecture` (project files). This page
 - **Resync:** after a gap in the sequence, a lost Redis connection, a dropped provider stream, or a failed write, cook or cache update, every browser is sent `resync` and reloads from `GET /bars`. `pnpm cook`, `pnpm gaps` and `pnpm backfill` also send one, after dropping cached windows.
 - **Slow clients:** a browser with more than 1 MiB waiting to be sent is closed (1013) and reconnects.
 - **Load test:** `pnpm load-live`, 1,000 clients by default (100 in `pnpm check`). Results are in `tasks/M2-04.md`.
+
+## Chart app (M2-05)
+`apps/web-chart`: React and KLineChart 10 (Apache 2.0), built with Vite. KLineChart's built-in indicators are never created; indicators are drawn from server output (M3). Locally, `pnpm chart` proxies `/bars`, `/instruments`, `/live` and `/auth` to the platform on :8080, so the browser sees one origin, as it will behind one host on staging.
+- **Framework-free data client** (`src/data`), which React only binds to:
+  - `LiveConnection`: one WebSocket per tab, with ref-counted subscriptions. It reconnects with backoff (0.5 s doubling to 30 s, with jitter), and a reconnect resubscribes and resyncs every series.
+  - `BarSeries`: one instrument and timeframe, following the gateway's client contract (subscribe, then load the newest 500 bars, then apply updates by bar time). It reloads on `resync`.
+- **Previous-bar revisions:** KLineChart drops a live bar older than its newest one, but the protocol revises the previous bar every minute. `ChartFeed` patches that bar in the chart's own list and re-sends the newest bar to redraw. The pinned version's behaviour is covered by the e2e test.
+- **The instrument picker** comes from `GET /instruments`: what is served, what the plan includes, and display precision. The MCP listing is the same, minus precision.
+- **Sign-in:** no screen yet (decision record T-07). The chart sends a stored token if there is one; locally, the platform runs with `AIA_DEV_AUTH=1`.
+- **Tests:** unit tests of the data client run without a browser. `pnpm e2e` (Playwright, Chromium; also in CI) runs the built chart against `apps/platform/src/e2e-server.ts`, the real server on `MemoryDataLayer` with made-up bars and a live feed the test drives.
 
 ## Feed independence (client requirement, CLAUDE.md rule 7)
 The client must be able to change the source of any feed at any time with no hard dependency on a provider. Introduced in M1-05.

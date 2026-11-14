@@ -4,9 +4,10 @@
 // @aia/data), and the plan check (@aia/access). No rules of its own.
 
 import type { Access, Entitlements, Principal } from '@aia/access';
+import type { InstrumentInfo, InstrumentListing, InstrumentsResponse } from '@aia/client-contract';
 import type { DataAccess } from '@aia/data';
 import type { HistoryErrorCode, HistoryQuery, HistoryResponse } from '@aia/serving';
-import type { BarTime, Instrument, Timeframe } from '@aia/shared-kernel';
+import type { BarTime, Timeframe } from '@aia/shared-kernel';
 import { TIMEFRAMES } from '@aia/shared-kernel';
 
 export interface ReadError {
@@ -16,15 +17,6 @@ export interface ReadError {
 }
 
 export type ReadOutcome<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly status: number; readonly error: ReadError };
-
-export interface InstrumentListing {
-  readonly symbol: string;
-  readonly kind: Instrument['kind'];
-  /** Timeframes with bars to serve now. */
-  readonly timeframes: readonly Timeframe[];
-  /** Of those, the ones the caller's plan includes. */
-  readonly included: readonly Timeframe[];
-}
 
 export interface ReadQueriesDeps {
   readonly history: Pick<HistoryQuery, 'parse' | 'run'>;
@@ -69,16 +61,33 @@ export class ReadQueries {
     return { ok: true, value: await this.deps.policy.entitlements(principal) };
   }
 
-  /** Every instrument, the timeframes served for it, and which the caller's plan includes. */
+  /** Every instrument, the timeframes served for it, and which the caller's plan includes (MCP). */
   async instruments(principal: Principal): Promise<ReadOutcome<readonly InstrumentListing[]>> {
-    const listings: InstrumentListing[] = [];
+    const listings = (await this.instrumentInfo(principal)).map(({ symbol, kind, timeframes, included }) => ({ symbol, kind, timeframes, included }));
+    return { ok: true, value: listings };
+  }
+
+  /** GET /instruments: the listing plus the display precision of each instrument's bars (the chart, M2-05). */
+  async instrumentsForChart(principal: Principal): Promise<ReadOutcome<InstrumentsResponse>> {
+    return { ok: true, value: { instruments: await this.instrumentInfo(principal) } };
+  }
+
+  private async instrumentInfo(principal: Principal): Promise<InstrumentInfo[]> {
+    const infos: InstrumentInfo[] = [];
     const catalog = this.deps.catalog;
     for (const instrument of catalog?.instruments ?? []) {
       const timeframes = TIMEFRAMES.filter((tf) => catalog?.whyNotServed(instrument, tf) === undefined);
       const included: Timeframe[] = [];
       for (const tf of timeframes) if (await this.deps.policy.canReadBars(principal, instrument.symbol, tf)) included.push(tf);
-      listings.push({ symbol: instrument.symbol, kind: instrument.kind, timeframes, included });
+      infos.push({
+        symbol: instrument.symbol,
+        kind: instrument.kind,
+        timeframes,
+        included,
+        pricePrecision: instrument.priceScale,
+        volumePrecision: instrument.volumeScale,
+      });
     }
-    return { ok: true, value: listings };
+    return infos;
   }
 }

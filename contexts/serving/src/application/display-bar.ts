@@ -1,18 +1,9 @@
-// A bar in display units, as the History API and the live gateway send it.
-// Pure.
+// A bar in display units, as the History API and the live gateway send it
+// (the shape is the client contract's, @aia/client-contract).
 
+import type { DisplayBar } from '@aia/client-contract';
 import type { Bar, Instrument } from '@aia/shared-kernel';
 import { formatScaled } from '@aia/shared-kernel';
-
-/** One bar in display units: prices and volume as decimal numbers, time in UTC seconds. */
-export interface DisplayBar {
-  readonly time: number;
-  readonly open: number;
-  readonly high: number;
-  readonly low: number;
-  readonly close: number;
-  readonly volume: number;
-}
 
 /** Scaled whole numbers to decimals at the instrument's precision. */
 export function displayBar(instrument: Instrument, bar: Bar): DisplayBar {

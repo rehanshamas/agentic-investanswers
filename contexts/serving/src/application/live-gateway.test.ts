@@ -2,13 +2,13 @@ import type { Bar, Instrument, Timeframe } from '@aia/shared-kernel';
 import { barTime, price, volume } from '@aia/shared-kernel';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import type { LiveServerMessage } from '@aia/client-contract';
+import { parseClientMessage } from '@aia/client-contract';
 import type { Announcer, LiveBarUpdate } from '@aia/data';
 import { BTCUSD, ETHUSD, MemoryDataLayer, NVDA } from '@aia/data';
 
 import type { LiveSocket } from './live-gateway.js';
 import { LIVE_CLOSE_TOO_SLOW, LiveGateway } from './live-gateway.js';
-import type { LiveServerMessage } from './live-protocol.js';
-import { parseClientMessage } from './live-protocol.js';
 
 const T0 = 1_762_800_000;
 

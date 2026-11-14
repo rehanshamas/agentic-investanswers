@@ -16,6 +16,7 @@
   "dependencies": {
     "@aia/access": "workspace:*",
     "@aia/agent": "workspace:*",
+    "@aia/client-contract": "workspace:*",
     "@aia/data": "workspace:*",
     "@aia/serving": "workspace:*",
     "@aia/shared-kernel": "workspace:*",

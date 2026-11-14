@@ -1,5 +1,6 @@
 // The live gateway's wire protocol (M2-04): JSON text messages over one
-// WebSocket per browser, carrying all its subscriptions.
+// WebSocket per browser, carrying all its subscriptions. The gateway that
+// speaks it is @aia/serving's (LiveGateway). Pure.
 //
 // Browser to server:
 //   { "op": "subscribe",   "instrument": "BTCUSD", "tf": "5m" }
@@ -28,7 +29,7 @@
 import type { Timeframe } from '@aia/shared-kernel';
 import { isTimeframe } from '@aia/shared-kernel';
 
-import type { DisplayBar } from '../domain/display-bar.js';
+import type { DisplayBar } from './display-bar.js';
 
 export type LiveErrorCode =
   | 'bad_parameter'

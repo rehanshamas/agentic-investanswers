@@ -19,3 +19,7 @@ coverage/
 # how the loader and parity harness get something to test against in CI.
 fixtures/parity/tradingview/*
 !fixtures/parity/tradingview/.gitkeep
+
+# Playwright output (M2-05)
+test-results/
+playwright-report/

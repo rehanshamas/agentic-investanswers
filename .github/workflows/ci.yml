@@ -54,6 +54,30 @@ jobs:
         env:
           NX_DAEMON: "false"
 
+  # The chart in a real browser (M2-05) against the platform's e2e server
+  # (made-up bars, no services needed). Runs on every change, like `check`.
+  e2e:
+    name: Chart e2e
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm e2e
+        env:
+          CI: "true"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: apps/web-chart/test-results/
+          retention-days: 7
+
   fixtures-guard:
     name: Fixtures guard
     if: github.event_name == 'pull_request'

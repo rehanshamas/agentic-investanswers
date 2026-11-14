@@ -2,10 +2,11 @@ import type { Bar, BarTime, Instrument, Timeframe } from '@aia/shared-kernel';
 import { barTime, parseScaled, price, volume } from '@aia/shared-kernel';
 import { describe, expect, it } from 'vitest';
 
+import { HISTORY_DEFAULT_LIMIT, HISTORY_MAX_LIMIT } from '@aia/client-contract';
 import type { BarsPage, PageQuery } from '@aia/data';
 import { BTCUSD, MemoryDataLayer, NVDA } from '@aia/data';
 
-import { HISTORY_DEFAULT_LIMIT, HISTORY_MAX_LIMIT, HistoryQuery } from './history-query.js';
+import { HistoryQuery } from './history-query.js';
 
 const T0 = barTime(1_762_800_000);
 const asked: Array<{ symbol: string; timeframe: Timeframe; query: PageQuery }> = [];

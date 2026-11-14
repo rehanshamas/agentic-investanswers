@@ -21,12 +21,12 @@
 //   (1013, try again later): the browser reconnects and resyncs, and the
 //   server never queues without bound for a slow client.
 
+import type { LiveClientMessage, LiveServerMessage, LiveWireUpdate } from '@aia/client-contract';
+import { parseClientMessage } from '@aia/client-contract';
 import type { DataAccess, LiveBarsListener, LiveBatch } from '@aia/data';
 import type { Instrument, Timeframe } from '@aia/shared-kernel';
 
-import { displayBar } from '../domain/display-bar.js';
-import type { LiveClientMessage, LiveServerMessage, LiveWireUpdate } from './live-protocol.js';
-import { parseClientMessage } from './live-protocol.js';
+import { displayBar } from './display-bar.js';
 
 /** The transport's side of one browser connection. */
 export interface LiveSocket {
