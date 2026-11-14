@@ -10,3 +10,17 @@ export { HISTORY_DEFAULT_LIMIT, HISTORY_MAX_LIMIT } from './domain/history.js';
 export type { InstrumentInfo, InstrumentListing, InstrumentsResponse } from './domain/instruments.js';
 export type { LiveClientMessage, LiveErrorCode, LiveServerMessage, LiveWireUpdate } from './domain/live-protocol.js';
 export { LIVE_MAX_CLIENT_MESSAGE, parseClientMessage } from './domain/live-protocol.js';
+export type {
+  DialogField,
+  DialogNumberField,
+  DialogSelectField,
+  DialogSwitchField,
+  IndicatorSettingValue,
+  IndicatorSettings,
+  IndicatorSettingsDialog,
+  IndicatorsResponse,
+  InvalidSettingsBody,
+  SettingFieldError,
+  SettingFieldErrorCode,
+  SettingsAccepted,
+} from './domain/indicator-settings.js';

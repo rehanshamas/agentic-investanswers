@@ -24,6 +24,7 @@ import {
   loadRateLimits,
 } from '@aia/access';
 import { openLocalDataLayer } from '@aia/data';
+import { IndicatorRegistry } from '@aia/indicators';
 import { HistoryQuery, LiveGateway } from '@aia/serving';
 import { barTime } from '@aia/shared-kernel';
 
@@ -73,7 +74,9 @@ async function main(): Promise<void> {
     now: () => Date.now(),
     onError: (failure) => console.error(`rate limits: ${failure.message} (request let through)`),
   });
-  const app = await buildServer({ history, access, live, limits, catalog: data, now: () => barTime(Math.floor(Date.now() / 1000)), logger: true });
+  // No indicator is registered until M3-05 brings the simple moving average (decision record D-11).
+  const indicators = new IndicatorRegistry([]);
+  const app = await buildServer({ history, access, live, limits, catalog: data, indicators, now: () => barTime(Math.floor(Date.now() / 1000)), logger: true });
 
   const port = Number(env['AIA_PORT'] ?? 8080);
   const host = env['AIA_HOST'] ?? '127.0.0.1';

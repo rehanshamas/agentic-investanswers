@@ -10,6 +10,8 @@
 //   GET /plan   what the caller's plan includes, and where to upgrade (M2-09)
 //   GET /instruments   every instrument, its timeframes served and included, and display precision (M2-05)
 //   POST /mcp   read-only MCP tools for agents (M4-02); see mcp-route.ts
+//   GET /indicators, POST /indicators/:id/settings   settings dialogs and the server-side
+//               settings check (M3-02), when indicators are given; see indicator-routes.ts
 //   /auth/*     the app's own sign-in (M2-08) and agent keys (M4-01), when configured;
 //               see auth-routes.ts and agent-key-routes.ts
 //
@@ -29,6 +31,8 @@ import type { FastifyInstance, FastifyLoggerOptions, FastifyRequest } from 'fast
 
 import { mountAgentKeyRoutes } from './agent-key-routes.js';
 import { mountAuthRoutes } from './auth-routes.js';
+import type { IndicatorCatalog } from './indicator-routes.js';
+import { mountIndicatorRoutes } from './indicator-routes.js';
 import { mountMcpRoute } from './mcp-route.js';
 import type { Limits } from './rate-limit.js';
 import { refusedForRate } from './rate-limit.js';
@@ -45,6 +49,8 @@ export interface ServerDeps {
   readonly pingMs?: number;
   /** The instruments and what is served, for GET /instruments and the MCP listing (M4-02): the data layer's. */
   readonly catalog?: Pick<DataAccess, 'instruments' | 'whyNotServed'>;
+  /** The indicators users may add, for GET /indicators and the settings check (M3-02); mounted when given. */
+  readonly indicators?: IndicatorCatalog;
   /** Per-user rate limits (M2-10); none when left out. */
   readonly limits?: Limits;
   /** Request logging; `{ stream }` sends it to a stream (tests). Session tokens are masked either way. */
@@ -126,6 +132,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   });
 
   mountMcpRoute(app, reads, deps.access.principals, limits);
+  if (deps.indicators !== undefined) mountIndicatorRoutes(app, deps.indicators, deps.access.principals, limits);
 
   const live = deps.live;
   if (live !== undefined) {

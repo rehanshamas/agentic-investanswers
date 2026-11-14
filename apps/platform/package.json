@@ -18,6 +18,7 @@
     "@aia/agent": "workspace:*",
     "@aia/client-contract": "workspace:*",
     "@aia/data": "workspace:*",
+    "@aia/indicators": "workspace:*",
     "@aia/serving": "workspace:*",
     "@aia/shared-kernel": "workspace:*",
     "@fastify/compress": "^8.3.1",
