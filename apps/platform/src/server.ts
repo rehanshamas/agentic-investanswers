@@ -6,8 +6,9 @@
 //
 //   GET /health
 //   GET /bars?instrument=BTCUSD&tf=5m&limit=500&before=1762800000
-//   GET /live   upgraded to a WebSocket; the protocol is in @aia/serving (live-protocol.ts)
+//   GET /live   upgraded to a WebSocket; the protocol is in @aia/client-contract (live-protocol.ts)
 //   GET /plan   what the caller's plan includes, and where to upgrade (M2-09)
+//   GET /instruments   every instrument, its timeframes served and included, and display precision (M2-05)
 //   POST /mcp   read-only MCP tools for agents (M4-02); see mcp-route.ts
 //   /auth/*     the app's own sign-in (M2-08) and agent keys (M4-01), when configured;
 //               see auth-routes.ts and agent-key-routes.ts
@@ -42,7 +43,7 @@ export interface ServerDeps {
   readonly live?: Pick<LiveGateway, 'open'>;
   /** How often idle WebSockets are pinged; one that missed the last ping is closed. Default 30 s. */
   readonly pingMs?: number;
-  /** The instruments and what is served, for the MCP instrument listing (M4-02): the data layer's. */
+  /** The instruments and what is served, for GET /instruments and the MCP listing (M4-02): the data layer's. */
   readonly catalog?: Pick<DataAccess, 'instruments' | 'whyNotServed'>;
   /** Per-user rate limits (M2-10); none when left out. */
   readonly limits?: Limits;
@@ -113,6 +114,14 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     if (principal === undefined) return reply.code(401).send(error('unauthorized', 'sign in to see your plan'));
     if (limits !== undefined && (await refusedForRate(reply, await limits.checkReads(principal)))) return reply;
     const outcome = await reads.plan(principal);
+    return outcome.ok ? outcome.value : reply.code(outcome.status).send({ error: outcome.error });
+  });
+
+  app.get('/instruments', async (request, reply) => {
+    const principal = await deps.access.principals.resolve({ authorization: request.headers.authorization });
+    if (principal === undefined) return reply.code(401).send(error('unauthorized', 'sign in to list instruments'));
+    if (limits !== undefined && (await refusedForRate(reply, await limits.checkReads(principal)))) return reply;
+    const outcome = await reads.instrumentsForChart(principal);
     return outcome.ok ? outcome.value : reply.code(outcome.status).send({ error: outcome.error });
   });
 

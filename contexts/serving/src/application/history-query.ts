@@ -6,47 +6,21 @@
 //
 //   GET /bars?instrument=BTCUSD&tf=5m&limit=500&before=1762800000
 
+import type { HistoryError, HistoryErrorCode, HistoryResponse } from '@aia/client-contract';
+import { HISTORY_DEFAULT_LIMIT, HISTORY_MAX_LIMIT } from '@aia/client-contract';
 import type { DataAccess } from '@aia/data';
 import type { BarTime, Instrument, Timeframe } from '@aia/shared-kernel';
 import { BarTimeError, barTime, isTimeframe } from '@aia/shared-kernel';
 
-import type { DisplayBar } from '../domain/display-bar.js';
-import { displayBar } from '../domain/display-bar.js';
-
-/** Most bars one request may ask for. */
-export const HISTORY_MAX_LIMIT = 1_000;
-/** Bars per page when the request does not say. */
-export const HISTORY_DEFAULT_LIMIT = 500;
+import { displayBar } from './display-bar.js';
 
 const PARAMETERS = new Set(['instrument', 'tf', 'limit', 'before']);
-
-export type HistoryErrorCode =
-  | 'bad_parameter'
-  | 'limit_too_large'
-  | 'unknown_instrument'
-  | 'timeframe_not_served';
-
-export interface HistoryError {
-  readonly code: HistoryErrorCode;
-  readonly message: string;
-}
 
 export interface HistoryRequest {
   readonly instrument: Instrument;
   readonly timeframe: Timeframe;
   readonly limit: number;
   readonly before?: BarTime;
-}
-
-/** One bar in display units: prices and volume as decimal numbers, time in UTC seconds. */
-export type HistoryBar = DisplayBar;
-
-export interface HistoryResponse {
-  readonly instrument: string;
-  readonly timeframe: Timeframe;
-  readonly bars: HistoryBar[];
-  /** Pass as `before` for the next older page; `null` once history is exhausted. */
-  readonly next: number | null;
 }
 
 export interface HistoryQueryDeps {

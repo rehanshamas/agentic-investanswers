@@ -53,6 +53,9 @@ importers:
       '@aia/agent':
         specifier: workspace:*
         version: link:../../contexts/agent
+      '@aia/client-contract':
+        specifier: workspace:*
+        version: link:../../contexts/client-contract
       '@aia/data':
         specifier: workspace:*
         version: link:../../contexts/data
@@ -117,6 +120,12 @@ importers:
         specifier: workspace:*
         version: link:../../shared-kernel
 
+  contexts/client-contract:
+    dependencies:
+      '@aia/shared-kernel':
+        specifier: workspace:*
+        version: link:../../shared-kernel
+
   contexts/data:
     dependencies:
       '@aia/hydration':
@@ -173,6 +182,9 @@ importers:
 
   contexts/serving:
     dependencies:
+      '@aia/client-contract':
+        specifier: workspace:*
+        version: link:../client-contract
       '@aia/data':
         specifier: workspace:*
         version: link:../data
