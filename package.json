@@ -19,6 +19,8 @@
     "rebuild-check": "tsx apps/hydration/src/rebuild-check.ts",
     "load-hydration": "tsx --env-file-if-exists=.env apps/hydration/src/load-hydration.ts",
     "platform": "tsx --env-file-if-exists=.env apps/platform/src/main.ts",
+    "chart": "pnpm --filter @aia/app-web-chart dev",
+    "e2e": "playwright test -c apps/web-chart/playwright.config.ts",
     "load-live": "tsx --env-file-if-exists=.env apps/platform/src/load-live.ts",
     "owner-inputs": "node scripts/owner-inputs.mjs",
     "status": "node scripts/status.mjs"
