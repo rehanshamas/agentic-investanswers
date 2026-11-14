@@ -83,7 +83,7 @@ Full specification: `analytics-platform-architecture` (project files). This page
 - **Load test:** `pnpm load-live`, 1,000 clients by default (100 in `pnpm check`). Results are in `tasks/M2-04.md`.
 
 ## Chart app (M2-05)
-`apps/web-chart`: React and KLineChart 10 (Apache 2.0), built with Vite. KLineChart's built-in indicators are never created; indicators are drawn from server output (M3). Locally, `pnpm chart` proxies `/bars`, `/instruments`, `/live` and `/auth` to the platform on :8080, so the browser sees one origin, as it will behind one host on staging.
+`apps/web-chart`: React and KLineChart 10 (Apache 2.0), built with Vite. KLineChart's built-in indicators are never created; indicators are drawn from server output (M3). Locally, `pnpm chart` proxies `/bars`, `/instruments`, `/indicators`, `/live` and `/auth` to the platform on :8080, so the browser sees one origin, as it will behind one host on staging.
 - **Framework-free data client** (`src/data`), which React only binds to:
   - `LiveConnection`: one WebSocket per tab, with ref-counted subscriptions. It reconnects with backoff (0.5 s doubling to 30 s, with jitter), and a reconnect resubscribes and resyncs every series.
   - `BarSeries`: one instrument and timeframe, following the gateway's client contract (subscribe, then load the newest 500 bars, then apply updates by bar time). It reloads on `resync`.
@@ -118,6 +118,7 @@ The client must be able to change the source of any feed at any time with no har
 - **Runs on the server, cached in Redis** by indicator + version + instrument + timeframe + run start + settings. An entry holds the state after the last closed bar, that bar, and the newest 2,000 drawn points. A new closed bar is one step; the forming bar is previewed from the closed state and never cached; a changed last bar (a re-cook) means recompute.
 - **Run start pinned to a grid** of 5,000-bar blocks, starting one block before the newest bar's block, so a run covers 5,000 to 10,000 bars and a run rebuilt after a cache miss draws exactly the same values.
 - **Only drawn points leave:** declared outputs rounded to the instrument's tick. Indicator state stays in the cache, which only the engine reads.
+- **Settings dialog (M3-02):** generated from the declared inputs, never written per indicator. `GET /indicators` lists each indicator with its dialog description (number boxes with limits and step, switches, drop-downs; shapes in `@aia/client-contract`, `indicator-settings.ts`). `POST /indicators/:id/settings` runs `checkSettings` on the server and refuses anything undeclared, out of range, off the step grid or of the wrong type with a 400 `invalid_settings` that names each field. The chart's limits are only a convenience. The run route (M3-05) uses the same check (`acceptSettings`, apps/platform). Any signed-in principal, human or agent, may use them for now (decision record T-08).
 
 ## Security
 - Indicator source lives only in `agentic-investanswers-indicators`. Only drawn outputs at display precision leave the engine.

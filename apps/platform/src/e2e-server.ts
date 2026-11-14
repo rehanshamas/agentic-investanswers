@@ -20,12 +20,14 @@
 import { accessFromEnv } from '@aia/access';
 import type { LiveBarUpdate } from '@aia/data';
 import { BTCUSD, ETHUSD, MemoryDataLayer, SimulatedLiveFeed } from '@aia/data';
+import { IndicatorRegistry } from '@aia/indicators';
 import { HistoryQuery, LiveGateway } from '@aia/serving';
 import type { Bar, BarTime, Instrument, Timeframe } from '@aia/shared-kernel';
 import { alignToTimeframe, barTime, price, volume } from '@aia/shared-kernel';
 import type { FastifyInstance } from 'fastify';
 
 import { buildServer } from './server.js';
+import { settingsDemo } from './settings-demo-indicator.js';
 
 /** 2026-11-10 12:00 UTC: a 4h boundary, so every timeframe's bar starts here. */
 export const E2E_NOW = 1_794_312_000;
@@ -169,6 +171,7 @@ export async function startE2EServer(port: number): Promise<FastifyInstance> {
     access: accessFromEnv({ AIA_DEV_AUTH: '1' }),
     live,
     catalog: data,
+    indicators: new IndicatorRegistry([settingsDemo]),
     now: () => barTime(E2E_NOW),
     logger: false,
   });

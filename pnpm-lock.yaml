@@ -62,6 +62,9 @@ importers:
       '@aia/data':
         specifier: workspace:*
         version: link:../../contexts/data
+      '@aia/indicators':
+        specifier: workspace:*
+        version: link:../../contexts/indicators
       '@aia/serving':
         specifier: workspace:*
         version: link:../../contexts/serving

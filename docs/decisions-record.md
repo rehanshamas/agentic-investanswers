@@ -59,6 +59,11 @@ Choices made to keep progress going, each built so it can be swapped later witho
 - **Affects:** locally, the chart is run against the platform in developer access mode, where every request has access to everything. The chart already sends a session token with every request when it has one, so it works unchanged once a sign-in screen gives it one. The sign-in itself (T-01) is in place on the server.
 - **Closes when:** the move to AWS (M2-01) adds the sign-in screens, using the app's own sign-in (T-01) or InvestAnswers' (OI-21).
 
+**T-08 · Every plan can use indicators** (2026-11-14, M3-02)
+- **Why:** the placeholder plans (T-02) only list instruments and timeframes; which plans include which indicators is not decided (OI-21).
+- **Affects:** any signed-in user or agent key can list the indicators and change their settings. Settings are still checked by the server against each indicator's limits, and the bars an indicator runs on still follow the plan's instruments and timeframes.
+- **Swap later:** indicator access becomes one more entry in the plans, checked by the same access-policy interface; the routes do not change.
+
 ## Postponed decisions
 Open questions, what we assume meanwhile, and the latest date the answer is useful.
 
