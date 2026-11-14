@@ -73,7 +73,7 @@ async function main(): Promise<void> {
     now: () => Date.now(),
     onError: (failure) => console.error(`rate limits: ${failure.message} (request let through)`),
   });
-  const app = await buildServer({ history, access, live, limits, now: () => barTime(Math.floor(Date.now() / 1000)), logger: true });
+  const app = await buildServer({ history, access, live, limits, catalog: data, now: () => barTime(Math.floor(Date.now() / 1000)), logger: true });
 
   const port = Number(env['AIA_PORT'] ?? 8080);
   const host = env['AIA_HOST'] ?? '127.0.0.1';

@@ -69,7 +69,7 @@ To start a task, ask Claude: "Start task M1-06". It copies the template into `ta
 | ID | Task | → | Done when |
 |---|---|---|---|
 | M4-01 | Agent identity: agent principal linked to a user/org, tokens (client's sign-in, or our own scoped keys as fallback) | M2-09 | Agent token authenticates; scope is read-only |
-| M4-02 | Read-only MCP tools: get bars, get indicator output, list instruments (same queries as the API, no new logic) | M4-01 | MCP client test calls each tool; plan checks apply |
+| M4-02 | Read-only MCP tools: get bars, get indicator output, list instruments (same queries as the API, no new logic). The indicator output tool joins when the platform serves indicator outputs (M3-05) | M4-01 | MCP client test calls each tool; plan checks apply |
 | M4-03 | Read-only agent API endpoints | M4-01 | Contract tests |
 | M4-04 | Usage and audit records for every human and agent request | M4-01 | Records queryable per user/agent |
 | M4-05 | Freshness and speed dashboard (CloudWatch) against agreed targets | M2-07 | Dashboard link for the client |
