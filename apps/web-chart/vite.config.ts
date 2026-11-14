@@ -11,6 +11,7 @@ const proxy = {
   '/bars': platform,
   '/instruments': platform,
   '/plan': platform,
+  '/indicators': platform,
   '/auth': platform,
   '/live': { target: platform, ws: true },
 };
