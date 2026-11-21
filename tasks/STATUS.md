@@ -58,7 +58,7 @@ Updated by Claude at the start and end of each task (`/start-task`, `/handoff`) 
 | M4-03 | Read-only agent API endpoints | todo | #43 |  |
 | M4-04 | Usage and audit records for every human and agent request | done | #44 | #119 |
 | M4-05 | Freshness and speed dashboard (CloudWatch) against agreed targets | todo | #45 |  |
-| M4-06 | MVP demo script + acceptance report (runs all four checks, prints pass/fail) | todo | #46 |  |
+| M4-06 | MVP demo script + acceptance report (runs all four checks, prints pass/fail) | in progress | #46 |  |
 | UI-01 | Drawing tools panel (client UI feedback) | done | #116 | #117 |
 | UI-02 | Data freshness badge (client UI feedback) | done | #120 | #122 |
 | UI-03 | Import from TradingView: chart data and watchlists (client UI feedback) | done | #121 | #122 |
